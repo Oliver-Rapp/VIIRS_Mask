@@ -1,0 +1,31 @@
+### Project Specific Data & Outputs ###
+# Exclude the big data folders you mentioned
+20250415_noaa21-viirs-pps/
+data-case1/
+
+# Exclude generated output folders
+output_mixed_NB/
+
+### Python Environment ###
+.venv/
+env/
+venv/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+
+### Nix & Development ###
+# If you use 'nix-build', it creates a 'result' symlink
+result
+result-*
+.direnv/
+
+### IDEs & OS ###
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+### Jupyter Notebooks (Optional) ###
+.ipynb_checkpoints
