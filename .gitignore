@@ -5,6 +5,8 @@ data-case1/
 
 # Exclude generated output folders
 output_mixed_NB/
+output_day_stats/
+output_day_stats_full/
 
 ### Python Environment ###
 .venv/
