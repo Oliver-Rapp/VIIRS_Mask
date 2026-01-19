@@ -7,6 +7,7 @@ data-case1/
 output_mixed_NB/
 output_day_stats/
 output_day_stats_full/
+output*
 
 ### Python Environment ###
 .venv/
