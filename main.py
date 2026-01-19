@@ -2,44 +2,46 @@ import datetime
 import numpy as np
 import multiprocessing as mp
 
-# Import from the library package
 from lib import config
 from lib import data_io
 from lib import core_logic
 from lib import plotting
 
-# Worker Function (Must be top-level for multiprocessing)
 def process_scene_task(args):
-    # Unpack arguments: timestamp, file paths, and boolean flag for plotting
     ts, files, do_plot = args 
     
-    # 1. Load Data (IO Module)
+    # 1. Load Data
     data = data_io.load_scene_data(files)
     if data is None: return None
 
-    # 2. Classification & Masking (Logic Module)
+    # 2. Classification
     cls, cloud_clean = core_logic.create_classification(
-        data['cma'], data['landuse'], data['lat'], config.LATITUDE_THRESHOLD
+        data['cma'], 
+        data['landuse'], 
+        data['lat'], 
+        data['lon'],
+        config.LATITUDE_THRESHOLD,
+        data['sunz'], 
+        config.MAX_SOLAR_ZENITH,
+        config.USE_CROP,
+        config.CROP_BOUNDS if config.USE_CROP else None
     )
 
-    # 3. Check for sufficient Ice (Optimization)
-    # Checks if we have enough ice pixels to bother processing stats
+    # 3. Ice Check
     if np.count_nonzero(cls == 2) < config.MIN_ICE_PIXELS:
         return None
 
-    # --- DEBUG MAPPING ---
-    # If this is one of the first N scenes, save a map image
-    if do_plot:
-        plotting.save_scene_map(cls, ts)
-
-    # 4. Neighbors & Stats (Logic Module)
+    # 4. Neighbors (Before Plotting)
     nbs = core_logic.compute_neighbors(cls, cloud_clean)
-    
+
+    # --- DEBUG MAPPING ---
+    if do_plot:
+        plotting.generate_debug_suite(cls, nbs, ts)
+
     # 5. Local Histograms
     local_counts = {acc: {k: np.zeros(len(config.BINS[acc])-1) for k in config.KEYS} 
                     for acc in config.BINS.keys()}
     
-    # Map data keys to bin keys
     var_map = {
         't11': 't11', 'diff1': 'diff1', 'diff2': 'diff2', 'diff3': 'diff3',
         'sunz': 'sunz', 'satz': 'satz',
@@ -47,20 +49,19 @@ def process_scene_task(args):
         't11t12_tex': 't11t12_tex', 't37t12_tex': 't37t12_tex'
     }
 
-    for key in config.KEYS: # Iterate mask types (iNw, Mixed...)
+    for key in config.KEYS:
         if key not in nbs: continue
         mask = nbs[key]
         if not np.any(mask): continue
         
         for var_name, bin_name in var_map.items():
             vals = data[var_name][mask]
-            # Handle masked arrays
             if np.ma.is_masked(vals): vals = vals.compressed()
             if len(vals) > 0:
                 hist, _ = np.histogram(vals, bins=config.BINS[bin_name])
                 local_counts[bin_name][key] += hist
 
-    # 6. Mosaic Data (Subsampling)
+    # 6. Mosaic Data
     s = config.MOSAIC_STEP
     cls_sub = cls[::s, ::s].flatten()
     valid = cls_sub > 0
@@ -76,26 +77,24 @@ if __name__ == '__main__':
     start_time = datetime.datetime.now()
     
     print(f"--- VIIRS PRODUCTION PIPELINE ---")
-    print(f"Directory: {config.DATA_DIR}")
+    print(f"Dir: {config.DATA_DIR}")
+    print(f"Crop Enabled: {config.USE_CROP}")
+    if config.USE_CROP: print(f"Bounds: {config.CROP_BOUNDS}")
     
     file_groups = data_io.get_file_groups(config.DATA_DIR)
     print(f"Found {len(file_groups)} items. Processing...")
 
-    # --- PREPARE TASKS WITH PLOT FLAG ---
-    # We create a list of arguments to pass to the workers.
-    # The third argument is 'True' for the first N scenes, determining if they should output a .png
     tasks = []
-    for i, (ts, files) in enumerate(file_groups.items()):
+    sorted_keys = sorted(file_groups.keys())
+    for i, ts in enumerate(sorted_keys):
         should_plot = (i < config.NUM_DEBUG_MAPS)
-        tasks.append((ts, files, should_plot))
+        tasks.append((ts, file_groups[ts], should_plot))
 
-    # Master Accumulator
     master_counts = {acc: {k: np.zeros(len(config.BINS[acc])-1) for k in config.KEYS} 
                      for acc in config.BINS.keys()}
     mosaic_data = {'lat': [], 'lon': [], 'cls': []}
     timestamps = []
     
-    # Run Pool
     pool_size = config.NUM_WORKERS if config.NUM_WORKERS else mp.cpu_count()
     processed_count = 0
     print(f"Using {pool_size} CPU cores.")
@@ -104,12 +103,10 @@ if __name__ == '__main__':
         for result in pool.imap_unordered(process_scene_task, tasks):
             if result is None: continue
             
-            # Aggregate Histograms
             for acc, data in result['counts'].items():
                 for key, hist in data.items():
                     master_counts[acc][key] += hist
             
-            # Aggregate Mosaic
             mosaic_data['lat'].append(result['mosaic']['lat'])
             mosaic_data['lon'].append(result['mosaic']['lon'])
             mosaic_data['cls'].append(result['mosaic']['cls'])
@@ -118,7 +115,6 @@ if __name__ == '__main__':
             processed_count += 1
             if processed_count % 10 == 0: print(f"Processed {processed_count}...")
 
-    # Metadata
     timestamps.sort()
     meta = {
         'count': processed_count,
@@ -127,6 +123,5 @@ if __name__ == '__main__':
         'duration': datetime.datetime.now() - start_time
     }
 
-    # Generate Report
     plotting.generate_report(meta, master_counts, mosaic_data)
     print("Done.")

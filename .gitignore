@@ -2,6 +2,7 @@
 # Exclude the big data folders you mentioned
 20250415_noaa21-viirs-pps/
 data-case1/
+reference_info/
 
 # Exclude generated output folders
 output_mixed_NB/

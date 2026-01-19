@@ -1,30 +1,40 @@
 import os
+import datetime
 import numpy as np
 import matplotlib.colors as mcolors
 
 # ================= INPUT / OUTPUT =================
 DATA_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/20250415_noaa21-viirs-pps'
-OUTPUT_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/output_day_stats_final'
-PDF_FILENAME = 'VIIRS_Daily_Report.pdf'
+OUTPUT_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/output_fram_strait'
+DEBUG_DIR = os.path.join(OUTPUT_DIR, 'debug_maps')
 
-if not os.path.exists(OUTPUT_DIR):
-    os.makedirs(OUTPUT_DIR)
+TIMESTAMP = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+PDF_FILENAME = f"VIIRS_FramStrait_{TIMESTAMP}.pdf"
+
+if not os.path.exists(OUTPUT_DIR): os.makedirs(OUTPUT_DIR)
+if not os.path.exists(DEBUG_DIR): os.makedirs(DEBUG_DIR)
+
+# ================= GEOGRAPHIC CROP (FRAM STRAIT) =================
+USE_CROP = True
+
+# Fram Strait / Svalbard Area
+CROP_BOUNDS = {
+    'lat_min': 75.0,
+    'lat_max': 82.0,
+    'lon_min': -20.0,
+    'lon_max': 20.0
+}
 
 # ================= PROCESSING SETTINGS =================
-# Latitude Threshold: Skip scenes completely below this latitude
+# Latitude Threshold (Ignored if USE_CROP is True)
 LATITUDE_THRESHOLD = 60.0
 
-# Minimum Ice Pixels: Skip scene if it contains fewer than this many ice pixels
+# Solar Zenith Limit: 85.0 = Day only
+MAX_SOLAR_ZENITH = 85.0 
+
 MIN_ICE_PIXELS = 200
-
-# Multiprocessing: Set to None to use all CPU cores
 NUM_WORKERS = None 
-
-# Mosaic Subsampling: Take every Nth pixel for the map
 MOSAIC_STEP = 40
-
-# --- DEBUG MAPPING ---
-# Attempt to plot this many of the initial files found.
 NUM_DEBUG_MAPS = 50 
 
 # ================= HISTOGRAM BINS =================
@@ -41,7 +51,6 @@ BINS = {
     't37t12_tex': np.linspace(0, 6, 61)     
 }
 
-# Strict Plotting Limits (X-Axis)
 XLIMS = {
     't11': (255, 275),
     'diff1': (0, 2),
@@ -75,13 +84,14 @@ PLOT_ORDER = [
 ]
 
 # ================= COLORS =================
-# Define Discrete Colors
-# 0=No Data (Black), 1=Water (Blue), 2=Ice (White), 3=Cloud (Silver), 4=Land (Green)
 COLORS_LIST = ['black', 'blue', 'white', 'silver', 'green']
-
-# Create Colormap object using the module alias
 MOSAIC_CMAP = mcolors.ListedColormap(COLORS_LIST)
-
-# Define boundaries so values fall exactly into the colors
-# 0->Black, 1->Blue, 2->White, 3->Silver, 4->Green
 MOSAIC_NORM = mcolors.BoundaryNorm([0, 1, 2, 3, 4, 5], 5)
+
+NEIGHBOR_COLORS = {
+    'iNw': 'red',      'i2Nw': 'orange', 'i3Nw': 'gold',
+    'wNi': 'cyan',     'w2Ni': 'navy',   'w3Ni': 'purple',
+    'iNc': 'lightgray','i2Nc': 'lightslategray',
+    'wNc': 'lightgray','w2Nc': 'lightslategray',
+    'Mixed': 'orchid'
+}
