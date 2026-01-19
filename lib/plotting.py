@@ -89,7 +89,6 @@ def generate_pdf_report(meta, master_counts):
         fig = plt.figure(figsize=(11, 8.5)) 
         
         # --- 1. Generate Histogram Info String ---
-        # Dynamically grab bin info from config so it's always accurate
         bin_info = []
         for key in ['t11', 'diff1', 'r06_tex', 't37t12_tex']:
             if key in config.BINS:
@@ -130,19 +129,19 @@ def generate_pdf_report(meta, master_counts):
             f"Density Plot:     Normalized (Area under curve sums to 1)"
         )
         
-        # Plot Text on the left/top
         plt.figtext(0.05, 0.95, report_txt, fontfamily='monospace', fontsize=9, va='top')
 
-        # --- 3. Plot Coverage Map (Moved down to accommodate text) ---
+        # --- 3. Plot Coverage Map ---
         proj = ccrs.NorthPolarStereo()
-        # Adjusted position: [left, bottom, width, height]
         ax = fig.add_axes([0.45, 0.05, 0.5, 0.8], projection=proj)
         
+        # Set extent with a margin around the crop box
+        margin_lon = 5; margin_lat = 2
         extent = [
-            config.CROP_BOUNDS['lon_min'] - 5,
-            config.CROP_BOUNDS['lon_max'] + 5,
-            config.CROP_BOUNDS['lat_min'] - 2,
-            config.CROP_BOUNDS['lat_max'] + 2
+            config.CROP_BOUNDS['lon_min'] - margin_lon,
+            config.CROP_BOUNDS['lon_max'] + margin_lon,
+            config.CROP_BOUNDS['lat_min'] - margin_lat,
+            config.CROP_BOUNDS['lat_max'] + margin_lat
         ]
         ax.set_extent(extent, crs=ccrs.PlateCarree())
         
@@ -151,6 +150,7 @@ def generate_pdf_report(meta, master_counts):
         ax.add_feature(cfeature.COASTLINE, linewidth=0.5, zorder=2)
         ax.gridlines(draw_labels=True, linestyle='--', alpha=0.5, zorder=3)
 
+        # Plot Heatmap
         grid_data = meta['coverage_grid'].T
         masked_grid = np.ma.masked_where(grid_data == 0, grid_data)
         
@@ -164,15 +164,37 @@ def generate_pdf_report(meta, master_counts):
             alpha=0.8
         )
         
-        # Add Crop Box
-        lons = [config.CROP_BOUNDS['lon_min'], config.CROP_BOUNDS['lon_max'], 
-                config.CROP_BOUNDS['lon_max'], config.CROP_BOUNDS['lon_min'], 
-                config.CROP_BOUNDS['lon_min']]
-        lats = [config.CROP_BOUNDS['lat_min'], config.CROP_BOUNDS['lat_min'], 
-                config.CROP_BOUNDS['lat_max'], config.CROP_BOUNDS['lat_max'], 
-                config.CROP_BOUNDS['lat_min']]
+        # --- 4. Draw the Bounding Box (CORRECTED) ---
+        # We manually interpolate points along the edges. This ensures that 
+        # lines of constant Latitude appear curved (as they should) in the 
+        # Polar Stereo projection, rather than drawing straight chords.
         
-        ax.plot(lons, lats, color='black', linewidth=2, transform=ccrs.Geodetic())
+        bounds = config.CROP_BOUNDS
+        n_steps = 100  # Number of points per edge for smooth curves
+        
+        # Bottom Edge (Lon varies, Lat constant min)
+        l1_x = np.linspace(bounds['lon_min'], bounds['lon_max'], n_steps)
+        l1_y = np.full(n_steps, bounds['lat_min'])
+        
+        # Right Edge (Lon constant max, Lat varies)
+        l2_x = np.full(n_steps, bounds['lon_max'])
+        l2_y = np.linspace(bounds['lat_min'], bounds['lat_max'], n_steps)
+        
+        # Top Edge (Lon varies desc, Lat constant max)
+        l3_x = np.linspace(bounds['lon_max'], bounds['lon_min'], n_steps)
+        l3_y = np.full(n_steps, bounds['lat_max'])
+        
+        # Left Edge (Lon constant min, Lat varies desc)
+        l4_x = np.full(n_steps, bounds['lon_min'])
+        l4_y = np.linspace(bounds['lat_max'], bounds['lat_min'], n_steps)
+        
+        # Combine into a closed loop
+        box_lons = np.concatenate([l1_x, l2_x, l3_x, l4_x])
+        box_lats = np.concatenate([l1_y, l2_y, l3_y, l4_y])
+        
+        # Plot using PlateCarree (Standard Lat/Lon coords)
+        ax.plot(box_lons, box_lats, color='black', linewidth=2, 
+                transform=ccrs.PlateCarree(), label='Analysis Region', zorder=10)
         
         cbar = plt.colorbar(mesh, ax=ax, orientation='horizontal', pad=0.05, shrink=0.8)
         cbar.set_label('Scene Overlap Count')
@@ -182,7 +204,7 @@ def generate_pdf_report(meta, master_counts):
         plt.close()
 
         # ==========================================
-        # PAGES 2+: HISTOGRAMS (Standard Logic)
+        # PAGES 2+: HISTOGRAMS
         # ==========================================
         for var_name, title in config.PLOT_ORDER:
             bins = config.BINS[var_name]

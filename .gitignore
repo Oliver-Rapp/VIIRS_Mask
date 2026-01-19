@@ -3,6 +3,8 @@
 20250415_noaa21-viirs-pps/
 data-case1/
 reference_info/
+single_2025_scene/
+data/
 
 # Exclude generated output folders
 output_mixed_NB/

@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.colors as mcolors
 
 # ================= PATHS =================
-DATA_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/data-case1'
+DATA_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/data/data-case1'
 OUTPUT_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/output_multi_scene'
 DEBUG_DIR = os.path.join(OUTPUT_DIR, 'debug_maps')
 
@@ -23,8 +23,8 @@ Example_Run = False
 # ================= CROP & THRESHOLDS =================
 USE_CROP = True
 CROP_BOUNDS = {
-    'lat_min': 76.192, 'lat_max': 77.918,
-    'lon_min': 13.789, 'lon_max': 18.63
+    'lat_min': 67.801, 'lat_max': 82.792,
+    'lon_min': -33.363, 'lon_max': 76.105
 }
 LATITUDE_THRESHOLD = 60.0
 MAX_SOLAR_ZENITH = 85.0
