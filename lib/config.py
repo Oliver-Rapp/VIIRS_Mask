@@ -4,8 +4,8 @@ import numpy as np
 import matplotlib.colors as mcolors
 
 # ================= PATHS =================
-DATA_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/20250415_noaa21-viirs-pps'
-OUTPUT_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/output_fram_strait_final'
+DATA_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/data-case1'
+OUTPUT_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/output_multi_scene'
 DEBUG_DIR = os.path.join(OUTPUT_DIR, 'debug_maps')
 
 if not os.path.exists(DEBUG_DIR):
@@ -23,11 +23,11 @@ Example_Run = False
 # ================= CROP & THRESHOLDS =================
 USE_CROP = True
 CROP_BOUNDS = {
-    'lat_min': 76.0528, 'lat_max': 77.939,
-    'lon_min': 13.712, 'lon_max': 19.043
+    'lat_min': 76.192, 'lat_max': 77.918,
+    'lon_min': 13.789, 'lon_max': 18.63
 }
 LATITUDE_THRESHOLD = 60.0
-MAX_SOLAR_ZENITH = 88.0
+MAX_SOLAR_ZENITH = 85.0
 MIN_ICE_PIXELS = 50 
 
 # ================= COVERAGE MAP SETTINGS =================
@@ -114,9 +114,25 @@ MOSAIC_CMAP = mcolors.ListedColormap(COLORS_LIST)
 MOSAIC_NORM = mcolors.BoundaryNorm([0, 1, 2, 3, 4, 5], 5)
 
 NEIGHBOR_COLORS = {
-    'iNw': 'red',      'i2Nw': 'orange', 'i3Nw': 'gold',
-    'wNi': 'cyan',     'w2Ni': 'navy',   'w3Ni': 'purple',
-    'iNc': 'lightgray','i2Nc': 'lightslategray',
-    'wNc': 'lightgray','w2Nc': 'lightslategray',
-    'Mixed': 'orchid'
+    # Ice -> Water Edge (Warm colors)
+    'iNw': 'red',      
+    'i2Nw': 'darkorange', 
+    'i3Nw': 'gold',
+
+    # Water -> Ice Edge (Cool Blues)
+    'wNi': 'cyan',     
+    'w2Ni': 'dodgerblue',   
+    'w3Ni': 'navy',
+
+    # Cloud Neighbors (Distinguishable colors)
+    # Ice-side Cloud neighbors (Purples)
+    'iNc': 'mediumorchid',   
+    'i2Nc': 'darkviolet',
+    
+    # Water-side Cloud neighbors (Teals/Greens)
+    'wNc': 'mediumseagreen', 
+    'w2Nc': 'darkgreen',
+
+    # Mixed
+    'Mixed': 'deeppink'
 }

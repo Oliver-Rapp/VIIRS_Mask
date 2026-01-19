@@ -17,29 +17,28 @@ def process_single_scene(args):
 
     # 3. Ice Check
     ice_count = np.count_nonzero(cls == 2)
+    # DEBUG: print(f"{ts}: Ice count {ice_count}") 
     if ice_count < config.MIN_ICE_PIXELS: return None
 
-    # --- NEW: CALCULATE COVERAGE ---
-    # We subsample by 10 (::10) to speed up histogram calculation
-    # We only care about VALID pixels (cls > 0)
+    # --- CALCULATE COVERAGE ---
     valid_mask = (cls > 0)
     
     # Compute 2D histogram for this scene
-    # This returns a grid of counts where this scene has data
     scene_coverage, _, _ = np.histogram2d(
         data['lon'][valid_mask][::10], 
         data['lat'][valid_mask][::10], 
         bins=[config.COVERAGE_LON_BINS, config.COVERAGE_LAT_BINS]
     )
-    # Convert to binary (1 = covered, 0 = not) so we count SCENES, not pixels
     scene_coverage = (scene_coverage > 0).astype(int)
 
-    # 4. Neighbors & 5. Plotting & 6. Histograms (Keep existing logic)
+    # 4. Neighbors
     nbs = core_logic.compute_neighbors(cls, cloud_clean)
     
+    # 5. Plotting
     if save_debug:
         plotting.generate_debug_suite(cls, nbs, ts)
 
+    # 6. Histograms
     local_counts = {var: {k: np.zeros(len(config.BINS[var])-1) for k in config.KEYS} 
                     for var in config.BINS.keys()}
     
@@ -50,63 +49,76 @@ def process_single_scene(args):
         
         for var_name in config.BINS.keys():
             if var_name not in data: continue
+            
             vals = data[var_name][mask]
+            
+            # Handle masked arrays and NaNs
             if np.ma.is_masked(vals): vals = vals.compressed()
             vals = vals[~np.isnan(vals)]
+            
             if len(vals) > 0:
                 hist, _ = np.histogram(vals, bins=config.BINS[var_name])
                 local_counts[var_name][key] += hist
 
-    # Return coverage grid along with counts
-    return {'counts': local_counts, 'coverage': scene_coverage}
+    # --- FIX: INCLUDE 'ts' IN RETURN ---
+    return {
+        'ts': ts, 
+        'counts': local_counts, 
+        'coverage': scene_coverage
+    }
 
 def main():
     start_time = datetime.datetime.now()
     print("--- VIIRS PROCESSOR START ---")
     
     file_groups = data_io.get_file_groups(config.DATA_DIR)
-    timestamps = sorted(list(file_groups.keys()))
+    all_timestamps = sorted(list(file_groups.keys()))
     
     if config.Example_Run:
-        timestamps = timestamps[:10]
+        all_timestamps = all_timestamps[:10]
 
-    print(f"Found {len(timestamps)} scenes to process.")
+    print(f"Found {len(all_timestamps)} scenes to process.")
 
     tasks = []
-    for i, ts in enumerate(timestamps):
+    for i, ts in enumerate(all_timestamps):
         do_debug = (i < config.NUM_DEBUG_MAPS)
         tasks.append((ts, file_groups[ts], do_debug))
 
-    # Initialize Master Histogram Accumulator
     master_counts = {var: {k: np.zeros(len(config.BINS[var])-1) for k in config.KEYS} 
                      for var in config.BINS.keys()}
     
-    # Initialize Master Coverage Grid (Zero matrix with shape of bins - 1)
+    # Grid for coverage map
     master_coverage = np.zeros((len(config.COVERAGE_LON_BINS)-1, len(config.COVERAGE_LAT_BINS)-1))
 
     processed_count = 0
+    processed_timestamps = [] # NEW: Track list of successfully processed times
     
     with mp.Pool(config.NUM_WORKERS) as pool:
         for result in pool.imap_unordered(process_single_scene, tasks):
             if result is None: continue
             
             processed_count += 1
+            processed_timestamps.append(result['ts']) # Store timestamp
             
-            # Aggregate Histograms
             for var, key_dict in result['counts'].items():
                 for key, hist in key_dict.items():
                     master_counts[var][key] += hist
             
-            # Aggregate Coverage Map
             master_coverage += result['coverage']
             
             if processed_count % 10 == 0:
                 print(f"Processed {processed_count} scenes...")
 
+    # Sort timestamps to find start/end
+    processed_timestamps.sort()
+    
     meta = {
         'count': processed_count,
         'duration': datetime.datetime.now() - start_time,
-        'coverage_grid': master_coverage # Pass the grid to plotting
+        'coverage_grid': master_coverage,
+        # NEW: Add time span info
+        'time_start': processed_timestamps[0] if processed_timestamps else "N/A",
+        'time_end': processed_timestamps[-1] if processed_timestamps else "N/A"
     }
     
     if processed_count > 0:
