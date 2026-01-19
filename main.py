@@ -1,14 +1,10 @@
 import datetime
 import numpy as np
 import multiprocessing as mp
+from lib import config, data_io, core_logic, plotting
 
-from lib import config
-from lib import data_io
-from lib import core_logic
-from lib import plotting
-
-def process_scene_task(args):
-    ts, files, do_plot = args 
+def process_single_scene(args):
+    ts, files, save_debug = args
     
     # 1. Load Data
     data = data_io.load_scene_data(files)
@@ -16,112 +12,108 @@ def process_scene_task(args):
 
     # 2. Classification
     cls, cloud_clean = core_logic.create_classification(
-        data['cma'], 
-        data['landuse'], 
-        data['lat'], 
-        data['lon'],
-        config.LATITUDE_THRESHOLD,
-        data['sunz'], 
-        config.MAX_SOLAR_ZENITH,
-        config.USE_CROP,
-        config.CROP_BOUNDS if config.USE_CROP else None
+        data['cma'], data['landuse'], data['lat'], data['sunz']
     )
 
     # 3. Ice Check
-    if np.count_nonzero(cls == 2) < config.MIN_ICE_PIXELS:
-        return None
+    ice_count = np.count_nonzero(cls == 2)
+    if ice_count < config.MIN_ICE_PIXELS: return None
 
-    # 4. Neighbors (Before Plotting)
+    # --- NEW: CALCULATE COVERAGE ---
+    # We subsample by 10 (::10) to speed up histogram calculation
+    # We only care about VALID pixels (cls > 0)
+    valid_mask = (cls > 0)
+    
+    # Compute 2D histogram for this scene
+    # This returns a grid of counts where this scene has data
+    scene_coverage, _, _ = np.histogram2d(
+        data['lon'][valid_mask][::10], 
+        data['lat'][valid_mask][::10], 
+        bins=[config.COVERAGE_LON_BINS, config.COVERAGE_LAT_BINS]
+    )
+    # Convert to binary (1 = covered, 0 = not) so we count SCENES, not pixels
+    scene_coverage = (scene_coverage > 0).astype(int)
+
+    # 4. Neighbors & 5. Plotting & 6. Histograms (Keep existing logic)
     nbs = core_logic.compute_neighbors(cls, cloud_clean)
-
-    # --- DEBUG MAPPING ---
-    if do_plot:
+    
+    if save_debug:
         plotting.generate_debug_suite(cls, nbs, ts)
 
-    # 5. Local Histograms
-    local_counts = {acc: {k: np.zeros(len(config.BINS[acc])-1) for k in config.KEYS} 
-                    for acc in config.BINS.keys()}
+    local_counts = {var: {k: np.zeros(len(config.BINS[var])-1) for k in config.KEYS} 
+                    for var in config.BINS.keys()}
     
-    var_map = {
-        't11': 't11', 'diff1': 'diff1', 'diff2': 'diff2', 'diff3': 'diff3',
-        'sunz': 'sunz', 'satz': 'satz',
-        'r06_tex': 'r06_tex', 't11_tex': 't11_tex', 
-        't11t12_tex': 't11t12_tex', 't37t12_tex': 't37t12_tex'
-    }
-
     for key in config.KEYS:
         if key not in nbs: continue
         mask = nbs[key]
         if not np.any(mask): continue
         
-        for var_name, bin_name in var_map.items():
+        for var_name in config.BINS.keys():
+            if var_name not in data: continue
             vals = data[var_name][mask]
             if np.ma.is_masked(vals): vals = vals.compressed()
+            vals = vals[~np.isnan(vals)]
             if len(vals) > 0:
-                hist, _ = np.histogram(vals, bins=config.BINS[bin_name])
-                local_counts[bin_name][key] += hist
+                hist, _ = np.histogram(vals, bins=config.BINS[var_name])
+                local_counts[var_name][key] += hist
 
-    # 6. Mosaic Data
-    s = config.MOSAIC_STEP
-    cls_sub = cls[::s, ::s].flatten()
-    valid = cls_sub > 0
-    mosaic = {
-        'lat': data['lat'][::s, ::s].flatten()[valid],
-        'lon': data['lon'][::s, ::s].flatten()[valid],
-        'cls': cls_sub[valid]
-    }
+    # Return coverage grid along with counts
+    return {'counts': local_counts, 'coverage': scene_coverage}
 
-    return {'counts': local_counts, 'mosaic': mosaic, 'ts': ts}
-
-if __name__ == '__main__':
+def main():
     start_time = datetime.datetime.now()
-    
-    print(f"--- VIIRS PRODUCTION PIPELINE ---")
-    print(f"Dir: {config.DATA_DIR}")
-    print(f"Crop Enabled: {config.USE_CROP}")
-    if config.USE_CROP: print(f"Bounds: {config.CROP_BOUNDS}")
+    print("--- VIIRS PROCESSOR START ---")
     
     file_groups = data_io.get_file_groups(config.DATA_DIR)
-    print(f"Found {len(file_groups)} items. Processing...")
+    timestamps = sorted(list(file_groups.keys()))
+    
+    if config.Example_Run:
+        timestamps = timestamps[:10]
+
+    print(f"Found {len(timestamps)} scenes to process.")
 
     tasks = []
-    sorted_keys = sorted(file_groups.keys())
-    for i, ts in enumerate(sorted_keys):
-        should_plot = (i < config.NUM_DEBUG_MAPS)
-        tasks.append((ts, file_groups[ts], should_plot))
+    for i, ts in enumerate(timestamps):
+        do_debug = (i < config.NUM_DEBUG_MAPS)
+        tasks.append((ts, file_groups[ts], do_debug))
 
-    master_counts = {acc: {k: np.zeros(len(config.BINS[acc])-1) for k in config.KEYS} 
-                     for acc in config.BINS.keys()}
-    mosaic_data = {'lat': [], 'lon': [], 'cls': []}
-    timestamps = []
+    # Initialize Master Histogram Accumulator
+    master_counts = {var: {k: np.zeros(len(config.BINS[var])-1) for k in config.KEYS} 
+                     for var in config.BINS.keys()}
     
-    pool_size = config.NUM_WORKERS if config.NUM_WORKERS else mp.cpu_count()
+    # Initialize Master Coverage Grid (Zero matrix with shape of bins - 1)
+    master_coverage = np.zeros((len(config.COVERAGE_LON_BINS)-1, len(config.COVERAGE_LAT_BINS)-1))
+
     processed_count = 0
-    print(f"Using {pool_size} CPU cores.")
     
-    with mp.Pool(pool_size) as pool:
-        for result in pool.imap_unordered(process_scene_task, tasks):
+    with mp.Pool(config.NUM_WORKERS) as pool:
+        for result in pool.imap_unordered(process_single_scene, tasks):
             if result is None: continue
             
-            for acc, data in result['counts'].items():
-                for key, hist in data.items():
-                    master_counts[acc][key] += hist
-            
-            mosaic_data['lat'].append(result['mosaic']['lat'])
-            mosaic_data['lon'].append(result['mosaic']['lon'])
-            mosaic_data['cls'].append(result['mosaic']['cls'])
-            
-            timestamps.append(result['ts'])
             processed_count += 1
-            if processed_count % 10 == 0: print(f"Processed {processed_count}...")
+            
+            # Aggregate Histograms
+            for var, key_dict in result['counts'].items():
+                for key, hist in key_dict.items():
+                    master_counts[var][key] += hist
+            
+            # Aggregate Coverage Map
+            master_coverage += result['coverage']
+            
+            if processed_count % 10 == 0:
+                print(f"Processed {processed_count} scenes...")
 
-    timestamps.sort()
     meta = {
         'count': processed_count,
-        'start': timestamps[0] if timestamps else 'N/A',
-        'end': timestamps[-1] if timestamps else 'N/A',
-        'duration': datetime.datetime.now() - start_time
+        'duration': datetime.datetime.now() - start_time,
+        'coverage_grid': master_coverage # Pass the grid to plotting
     }
+    
+    if processed_count > 0:
+        plotting.generate_pdf_report(meta, master_counts)
+        print("Done. PDF generated.")
+    else:
+        print("No scenes processed (check thresholds/crop).")
 
-    plotting.generate_report(meta, master_counts, mosaic_data)
-    print("Done.")
+if __name__ == '__main__':
+    main()

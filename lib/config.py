@@ -3,54 +3,69 @@ import datetime
 import numpy as np
 import matplotlib.colors as mcolors
 
-# ================= INPUT / OUTPUT =================
+# ================= PATHS =================
 DATA_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/20250415_noaa21-viirs-pps'
-OUTPUT_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/output_fram_strait'
+OUTPUT_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/output_fram_strait_final'
 DEBUG_DIR = os.path.join(OUTPUT_DIR, 'debug_maps')
 
+if not os.path.exists(DEBUG_DIR):
+    os.makedirs(DEBUG_DIR)
+
 TIMESTAMP = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-PDF_FILENAME = f"VIIRS_FramStrait_{TIMESTAMP}.pdf"
+PDF_FILENAME = f"VIIRS_Report_{TIMESTAMP}.pdf"
 
-if not os.path.exists(OUTPUT_DIR): os.makedirs(OUTPUT_DIR)
-if not os.path.exists(DEBUG_DIR): os.makedirs(DEBUG_DIR)
+# ================= RUN SETTINGS =================
+NUM_WORKERS = None           
+NUM_DEBUG_MAPS = 100        
+Example_Run = False       
 
-# ================= GEOGRAPHIC CROP (FRAM STRAIT) =================
+
+# ================= CROP & THRESHOLDS =================
 USE_CROP = True
-
-# Fram Strait / Svalbard Area
 CROP_BOUNDS = {
-    'lat_min': 75.0,
-    'lat_max': 82.0,
-    'lon_min': -20.0,
-    'lon_max': 20.0
+    'lat_min': 76.0528, 'lat_max': 77.939,
+    'lon_min': 13.712, 'lon_max': 19.043
 }
-
-# ================= PROCESSING SETTINGS =================
-# Latitude Threshold (Ignored if USE_CROP is True)
 LATITUDE_THRESHOLD = 60.0
+MAX_SOLAR_ZENITH = 88.0
+MIN_ICE_PIXELS = 50 
 
-# Solar Zenith Limit: 85.0 = Day only
-MAX_SOLAR_ZENITH = 85.0 
+# ================= COVERAGE MAP SETTINGS =================
+# Resolution in degrees for the heatmap (0.1 deg is approx 10km grid)
+MAP_RES = 0.1 
 
-MIN_ICE_PIXELS = 200
-NUM_WORKERS = None 
-MOSAIC_STEP = 40
-NUM_DEBUG_MAPS = 50 
+# Generate fixed bin edges for the heatmap based on CROP_BOUNDS
+# We add a small buffer to ensure edges are caught
+COVERAGE_LON_BINS = np.arange(
+    CROP_BOUNDS['lon_min'] - 1, 
+    CROP_BOUNDS['lon_max'] + 1, 
+    MAP_RES
+)
+COVERAGE_LAT_BINS = np.arange(
+    CROP_BOUNDS['lat_min'] - 1, 
+    CROP_BOUNDS['lat_max'] + 1, 
+    MAP_RES
+)
 
-# ================= HISTOGRAM BINS =================
+# ================= HISTOGRAM CONFIGURATION =================
+# BINS: Defined broadly to capture data
+# XLIMS: Defined strictly to match the visual zoom of the reference images
+
 BINS = {
-    't11': np.linspace(240, 280, 81),       
-    'diff1': np.linspace(0, 3, 61),         
-    'diff2': np.linspace(0, 12, 61),        
-    'diff3': np.linspace(-3, 1.5, 91),      
+    't11': np.linspace(220, 300, 161),       
+    'diff1': np.linspace(-2, 5, 141),       # T11 - T12
+    'diff2': np.linspace(-5, 15, 201),      # T3.7 - T12
+    'diff3': np.linspace(-5, 5, 101),       # T8.7 - T12
     'sunz': np.linspace(0, 90, 91),
     'satz': np.linspace(0, 70, 71),
-    'r06_tex': np.linspace(0, 40, 81),      
-    't11_tex': np.linspace(0, 5, 51),       
-    't11t12_tex': np.linspace(0, 0.5, 51),  
-    't37t12_tex': np.linspace(0, 6, 61)     
+    # Textures: High resolution bins for smooth curves
+    'r06_tex': np.linspace(0, 40, 201),      
+    't11_tex': np.linspace(0, 5, 101),       
+    't11t12_tex': np.linspace(0, 1.0, 101),  
+    't37t12_tex': np.linspace(0, 8, 161)     
 }
 
+# EXACT PLOTTING LIMITS (from reference images)
 XLIMS = {
     't11': (255, 275),
     'diff1': (0, 2),
@@ -58,10 +73,20 @@ XLIMS = {
     'diff3': (-2.5, 1),
     't11t12_tex': (0, 0.3),
     't37t12_tex': (0, 4)
+    # r06_tex, sunz, satz, t11_tex: Use full range or auto
 }
 
-# ================= DEFINITIONS =================
+# ================= PLOTTING DEFINITIONS =================
 KEYS = ['iNw', 'i2Nw', 'i3Nw', 'wNi', 'w2Ni', 'w3Ni', 'iNc', 'i2Nc', 'wNc', 'w2Nc', 'Mixed']
+
+# Maps internal keys to the styling used in the original script
+LABEL_MAP = {
+    'iNw': 'InW', 'i2Nw': 'I2nW', 'i3Nw': 'I3nW',
+    'wNi': 'WnI', 'w2Ni': 'W2nI', 'w3Ni': 'W3nI',
+    'iNc': 'InC', 'i2Nc': 'I2nC',
+    'wNc': 'WnC', 'w2Nc': 'W2nC',
+    'Mixed': 'Mixed'
+}
 
 PLOT_GROUPS = {
     'Ice Neighbors':   ['iNw', 'i2Nw', 'i3Nw'],
