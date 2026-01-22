@@ -7,11 +7,9 @@ import matplotlib.colors as mcolors
 DATA_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/data/20250403_noaa21-viirs-pps'
 OUTPUT_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/output_multi_scene'
 
-# Generate Timestamp first to use in paths
 TIMESTAMP = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 PDF_FILENAME = f"VIIRS_Report_{TIMESTAMP}.pdf"
 
-# Debug maps will go into: output/debug_maps/20250122_150000/
 DEBUG_BASE = os.path.join(OUTPUT_DIR, 'debug_maps')
 DEBUG_DIR = os.path.join(DEBUG_BASE, TIMESTAMP)
 
@@ -25,8 +23,8 @@ NUM_DEBUG_MAPS = 100
 # ================= CROP & THRESHOLDS =================
 USE_CROP = True
 CROP_BOUNDS = {
-    'lat_min': 67.801, 'lat_max': 82.792,
-    'lon_min': -33.363, 'lon_max': 76.105
+    'lat_min': 74.0, 'lat_max': 81.0,
+    'lon_min': 10.0, 'lon_max': 35.0
 }
 LATITUDE_THRESHOLD = 60.0
 MAX_SOLAR_ZENITH = 85.0
@@ -48,9 +46,9 @@ COVERAGE_LAT_BINS = np.arange(
 # ================= HISTOGRAM CONFIGURATION =================
 BINS = {
     't11': np.linspace(220, 300, 161),       
-    'diff1': np.linspace(-2, 5, 141),       # T11 - T12
-    'diff2': np.linspace(-5, 15, 201),      # T3.7 - T12
-    'diff3': np.linspace(-5, 5, 101),       # T8.7 - T12
+    'diff1': np.linspace(-2, 5, 141),       
+    'diff2': np.linspace(-5, 15, 201),      
+    'diff3': np.linspace(-5, 5, 101),       
     'sunz': np.linspace(0, 90, 91),
     'satz': np.linspace(0, 70, 71),
     'r06_tex': np.linspace(0, 40, 201),      
@@ -70,30 +68,33 @@ XLIMS = {
 
 # ================= PLOTTING DEFINITIONS =================
 KEYS = [
-    'iNw', 'i2Nw', 'i3Nw', 
-    'wNi', 'w2Ni', 'w3Ni', 
-    'iNc', 'i2Nc', 
-    'wNc', 'w2Nc', 
-    'Mixed',
-    'IN', 'WN', 'CN' 
+    # Ice Neighbors
+    'InW', 'I2nW', 'I3nW', 
+    'InC', 'I2nC', 'I3nC',
+    
+    # Water Neighbors
+    'WnI', 'W2nI', 'W3nI', 
+    'WnC', 'W2nC', 'W3nC',
+    
+    # Cloud Neighbors
+    'CnI', 'C2nI', 'C3nI',
+    'CnW', 'C2nW', 'C3nW',
+
+    # Interiors
+    'IN', 'WN', 'CN',
+    
+    # Complex
+    'Mixed'
 ]
 
-LABEL_MAP = {
-    'iNw': 'InW', 'i2Nw': 'I2nW', 'i3Nw': 'I3nW',
-    'wNi': 'WnI', 'w2Ni': 'W2nI', 'w3Ni': 'W3nI',
-    'iNc': 'InC', 'i2Nc': 'I2nC',
-    'wNc': 'WnC', 'w2Nc': 'W2nC',
-    'Mixed': 'Mixed',
-    'IN': 'Ice (Interior)',
-    'WN': 'Water (Interior)',
-    'CN': 'Cloud (Interior)'
-}
+# Labels match the keys exactly as requested
+LABEL_MAP = {k: k for k in KEYS}
 
 PLOT_GROUPS = {
-    'Ice Analysis':   ['IN', 'iNw', 'iNc'],
-    'Water Analysis': ['WN', 'wNi', 'wNc'],
-    'Cloud Analysis': ['CN', 'iNc', 'wNc'], 
-    'Ice vs Water Edges': ['iNw', 'wNi'],
+    'Ice Analysis':   ['IN', 'InW', 'InC'],
+    'Water Analysis': ['WN', 'WnI', 'WnC'],
+    'Cloud Analysis': ['CN', 'CnI', 'CnW'], 
+    'Ice vs Water Edges': ['InW', 'WnI'],
     'Mixed vs Pure': ['Mixed', 'IN', 'WN']
 }
 
@@ -116,16 +117,27 @@ MOSAIC_CMAP = mcolors.ListedColormap(COLORS_LIST)
 MOSAIC_NORM = mcolors.BoundaryNorm([0, 1, 2, 3, 4, 5], 5)
 
 NEIGHBOR_COLORS = {
-    # Edge Neighbors
-    'iNw': 'red', 'i2Nw': 'darkorange', 'i3Nw': 'gold',
-    'wNi': 'cyan', 'w2Ni': 'dodgerblue', 'w3Ni': 'navy',
-    'iNc': 'mediumorchid', 'i2Nc': 'darkviolet',
-    'wNc': 'mediumseagreen', 'w2Nc': 'darkgreen',
-    'Mixed': 'deeppink',
-    
-    # New "No Neighbor" / Interior Classes
-    # Colors chosen for visibility on white background
-    'IN': 'darkviolet',  # High contrast Ice
-    'WN': 'blue',        # Standard Water
-    'CN': 'dimgray'      # Dark Grey for Cloud (Visible)
+    # --- Ice Base: DarkViolet ---
+    'IN': 'darkviolet',
+    # Ice -> Water (Red/Orange)
+    'InW': 'red', 'I2nW': 'darkorange', 'I3nW': 'gold',
+    # Ice -> Cloud (Purple/Pink)
+    'InC': 'mediumorchid', 'I2nC': 'orchid', 'I3nC': 'thistle',
+
+    # --- Water Base: Blue ---
+    'WN': 'blue',
+    # Water -> Ice (Cyan/Teal)
+    'WnI': 'cyan', 'W2nI': 'deepskyblue', 'W3nI': 'dodgerblue',
+    # Water -> Cloud (Green)
+    'WnC': 'limegreen', 'W2nC': 'mediumseagreen', 'W3nC': 'seagreen',
+
+    # --- Cloud Base: DimGray ---
+    'CN': 'dimgray',
+    # Cloud -> Ice (Warm Pinks)
+    'CnI': 'hotpink', 'C2nI': 'palevioletred', 'C3nI': 'pink',
+    # Cloud -> Water (Light Blues)
+    'CnW': 'lightskyblue', 'C2nW': 'lightblue', 'C3nW': 'aliceblue',
+
+    # --- Complex ---
+    'Mixed': 'deeppink' 
 }

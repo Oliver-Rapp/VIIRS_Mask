@@ -13,13 +13,13 @@ def generate_debug_suite(classification, neighbors, timestamp):
     """
     Generates the debug map suite.
     """
-    # Use the timestamped run directory
-    scene_dir = os.path.join(config.DEBUG_DIR, timestamp)
-    if not os.path.exists(scene_dir):
-        os.makedirs(scene_dir)
+    scene_dir = config.DEBUG_DIR
+    scene_sub_dir = os.path.join(scene_dir, timestamp)
+    if not os.path.exists(scene_sub_dir):
+        os.makedirs(scene_sub_dir)
         
     def save_layer(active_keys, fname, title):
-        fig, ax = plt.subplots(figsize=(10, 8))
+        fig, ax = plt.subplots(figsize=(12, 10))
         
         # 1. Plot Base Map (Land, Water, Ice, Cloud)
         ax.imshow(classification, interpolation='none', 
@@ -48,29 +48,28 @@ def generate_debug_suite(classification, neighbors, timestamp):
                 label = config.LABEL_MAP.get(k, k)
                 patches.append(mpatches.Patch(color=color, label=label))
 
-        ax.legend(handles=patches, loc='upper left', bbox_to_anchor=(1, 1), fontsize='small')
+        ax.legend(handles=patches, loc='upper left', bbox_to_anchor=(1, 1), fontsize='x-small')
         
         ax.set_title(f"{timestamp}\n{title}")
         ax.axis('off')
         plt.tight_layout()
-        plt.savefig(os.path.join(scene_dir, fname), dpi=150)
+        plt.savefig(os.path.join(scene_sub_dir, fname), dpi=150)
         plt.close()
 
     try:
         # Map 1: Base Classification
         save_layer([], "01_base_class.png", "Base Classification")
         
-        # Map 2: Edges (Ice/Water)
-        edge_keys = ['iNw', 'i2Nw', 'i3Nw', 'wNi', 'w2Ni', 'w3Ni']
-        save_layer(edge_keys, "02_ice_water_edges.png", "Ice & Water Neighbors")
-
-        # Map 3: Cloud & Mixed
-        cloud_keys = ['iNc', 'i2Nc', 'wNc', 'w2Nc', 'Mixed']
-        save_layer(cloud_keys, "03_cloud_mixed.png", "Cloud Neighbors & Mixed")
-
-        # Map 4: Interior/Pure Classes
-        interior_keys = ['IN', 'WN', 'CN']
-        save_layer(interior_keys, "04_interior_classes.png", "Interior / No Neighbors")
+        # Map 2: The Combined Map (Interior + Neighbors + Mixed)
+        # Using new notation defined in config/core_logic
+        combined_keys = [
+            'IN', 'WN', 'CN', # Interiors
+            'I3nW', 'I3nC', 'W3nI', 'W3nC', 'C3nI', 'C3nW', # 3rd degree
+            'I2nW', 'I2nC', 'W2nI', 'W2nC', 'C2nI', 'C2nW', # 2nd degree
+            'InW', 'InC', 'WnI', 'WnC', 'CnI', 'CnW',       # 1st degree
+            'Mixed'                                         # Top layer
+        ]
+        save_layer(combined_keys, "02_combined_analysis.png", "Full Classification (Interior, Neighbors, Mixed)")
         
         return True
     except Exception as e:
@@ -181,6 +180,8 @@ def generate_pdf_report(meta, master_counts):
                 has_data = False
                 
                 for k in keys:
+                    if k not in master_counts[var_name]: continue
+                    
                     count_hist = master_counts[var_name][k]
                     total_count = np.sum(count_hist)
                     
