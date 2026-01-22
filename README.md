@@ -25,9 +25,6 @@ The project requires **Python 3** and the following scientific libraries:
 ```bash
 pip install numpy scipy matplotlib netCDF4 cartopy
 ```
-
-*Note: `cartopy` often requires system-level dependencies (GEOS, Proj) to be installed via your package manager (e.g., `conda`, `apt`, or `brew`).*
-
 ## ⚙️ Configuration
 
 All settings are managed in `lib/config.py`.
@@ -61,7 +58,7 @@ python main.py
 3.  It generates a **PDF Report** in `OUTPUT_DIR`.
 4.  It generates **Debug Maps** (PNGs) in `OUTPUT_DIR/debug_maps/<TIMESTAMP>/`.
 
-## 🔬 Scientific Methodology
+## 🔬 Class Definitions
 
 The core logic uses **Binary Morphological Dilation** (3x3 structuring element) to identify how pixels interact with their neighbors.
 
