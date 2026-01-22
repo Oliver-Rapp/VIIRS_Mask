@@ -17,8 +17,6 @@ PDF_FILENAME = f"VIIRS_Report_{TIMESTAMP}.pdf"
 # ================= RUN SETTINGS =================
 NUM_WORKERS = None           
 NUM_DEBUG_MAPS = 100        
-Example_Run = False       
-
 
 # ================= CROP & THRESHOLDS =================
 USE_CROP = True
@@ -31,11 +29,7 @@ MAX_SOLAR_ZENITH = 85.0
 MIN_ICE_PIXELS = 50 
 
 # ================= COVERAGE MAP SETTINGS =================
-# Resolution in degrees for the heatmap (0.1 deg is approx 10km grid)
 MAP_RES = 0.1 
-
-# Generate fixed bin edges for the heatmap based on CROP_BOUNDS
-# We add a small buffer to ensure edges are caught
 COVERAGE_LON_BINS = np.arange(
     CROP_BOUNDS['lon_min'] - 1, 
     CROP_BOUNDS['lon_max'] + 1, 
@@ -48,9 +42,6 @@ COVERAGE_LAT_BINS = np.arange(
 )
 
 # ================= HISTOGRAM CONFIGURATION =================
-# BINS: Defined broadly to capture data
-# XLIMS: Defined strictly to match the visual zoom of the reference images
-
 BINS = {
     't11': np.linspace(220, 300, 161),       
     'diff1': np.linspace(-2, 5, 141),       # T11 - T12
@@ -58,14 +49,12 @@ BINS = {
     'diff3': np.linspace(-5, 5, 101),       # T8.7 - T12
     'sunz': np.linspace(0, 90, 91),
     'satz': np.linspace(0, 70, 71),
-    # Textures: High resolution bins for smooth curves
     'r06_tex': np.linspace(0, 40, 201),      
     't11_tex': np.linspace(0, 5, 101),       
     't11t12_tex': np.linspace(0, 1.0, 101),  
     't37t12_tex': np.linspace(0, 8, 161)     
 }
 
-# EXACT PLOTTING LIMITS (from reference images)
 XLIMS = {
     't11': (255, 275),
     'diff1': (0, 2),
@@ -73,26 +62,37 @@ XLIMS = {
     'diff3': (-2.5, 1),
     't11t12_tex': (0, 0.3),
     't37t12_tex': (0, 4)
-    # r06_tex, sunz, satz, t11_tex: Use full range or auto
 }
 
 # ================= PLOTTING DEFINITIONS =================
-KEYS = ['iNw', 'i2Nw', 'i3Nw', 'wNi', 'w2Ni', 'w3Ni', 'iNc', 'i2Nc', 'wNc', 'w2Nc', 'Mixed']
+# Added IN, WN, CN to the keys list
+KEYS = [
+    'iNw', 'i2Nw', 'i3Nw', 
+    'wNi', 'w2Ni', 'w3Ni', 
+    'iNc', 'i2Nc', 
+    'wNc', 'w2Nc', 
+    'Mixed',
+    'IN', 'WN', 'CN' 
+]
 
-# Maps internal keys to the styling used in the original script
 LABEL_MAP = {
     'iNw': 'InW', 'i2Nw': 'I2nW', 'i3Nw': 'I3nW',
     'wNi': 'WnI', 'w2Ni': 'W2nI', 'w3Ni': 'W3nI',
     'iNc': 'InC', 'i2Nc': 'I2nC',
     'wNc': 'WnC', 'w2Nc': 'W2nC',
-    'Mixed': 'Mixed'
+    'Mixed': 'Mixed',
+    'IN': 'Ice (Interior)',
+    'WN': 'Water (Interior)',
+    'CN': 'Cloud (Interior)'
 }
 
+# Updated Groups to include the specific comparison requested
 PLOT_GROUPS = {
-    'Ice Neighbors':   ['iNw', 'i2Nw', 'i3Nw'],
-    'Water Neighbors': ['wNi', 'w2Ni', 'w3Ni'],
-    'Cloud Neighbors': ['iNc', 'i2Nc', 'wNc', 'w2Nc'],
-    'Mixed Neighbors': ['Mixed']
+    'Ice Analysis':   ['IN', 'iNw', 'iNc'],
+    'Water Analysis': ['WN', 'wNi', 'wNc'],
+    'Cloud Analysis': ['CN', 'iNc', 'wNc'], 
+    'Ice vs Water Edges': ['iNw', 'wNi'],
+    'Mixed vs Pure': ['Mixed', 'IN', 'WN']
 }
 
 PLOT_ORDER = [
@@ -114,25 +114,15 @@ MOSAIC_CMAP = mcolors.ListedColormap(COLORS_LIST)
 MOSAIC_NORM = mcolors.BoundaryNorm([0, 1, 2, 3, 4, 5], 5)
 
 NEIGHBOR_COLORS = {
-    # Ice -> Water Edge (Warm colors)
-    'iNw': 'red',      
-    'i2Nw': 'darkorange', 
-    'i3Nw': 'gold',
-
-    # Water -> Ice Edge (Cool Blues)
-    'wNi': 'cyan',     
-    'w2Ni': 'dodgerblue',   
-    'w3Ni': 'navy',
-
-    # Cloud Neighbors (Distinguishable colors)
-    # Ice-side Cloud neighbors (Purples)
-    'iNc': 'mediumorchid',   
-    'i2Nc': 'darkviolet',
+    # Edge Neighbors
+    'iNw': 'red', 'i2Nw': 'darkorange', 'i3Nw': 'gold',
+    'wNi': 'cyan', 'w2Ni': 'dodgerblue', 'w3Ni': 'navy',
+    'iNc': 'mediumorchid', 'i2Nc': 'darkviolet',
+    'wNc': 'mediumseagreen', 'w2Nc': 'darkgreen',
+    'Mixed': 'deeppink',
     
-    # Water-side Cloud neighbors (Teals/Greens)
-    'wNc': 'mediumseagreen', 
-    'w2Nc': 'darkgreen',
-
-    # Mixed
-    'Mixed': 'deeppink'
+    # New "No Neighbor" / Interior Classes
+    'IN': 'white',       # Pure Ice
+    'WN': 'blue',        # Pure Water
+    'CN': 'lightgray'    # Pure Cloud
 }

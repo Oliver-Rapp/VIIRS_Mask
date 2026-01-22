@@ -20,7 +20,7 @@ def compute_neighbors(classification, cloud_bool):
     w2Ni = ndimage.binary_dilation(wNi, structure=struct3) & water_bool & (~wNi)
     w3Ni = ndimage.binary_dilation(w2Ni, structure=struct3) & water_bool & (~wNi) & (~w2Ni)
 
-    # --- Cloud Neighbors ---
+    # --- Cloud Neighbors (Edges against Ice/Water) ---
     iNc = ndimage.binary_dilation(cloud_bool, structure=struct3) & ice_bool
     i2Nc = ndimage.binary_dilation(iNc, structure=struct3) & ice_bool & (~iNc)
     wNc = ndimage.binary_dilation(cloud_bool, structure=struct3) & water_bool
@@ -32,12 +32,31 @@ def compute_neighbors(classification, cloud_bool):
         'iNc': iNc, 'i2Nc': i2Nc, 'wNc': wNc, 'w2Nc': w2Nc
     }
 
-    # --- Mixed Logic ---
+    # --- Mixed Logic (Intersections) ---
+    # Sum up how many edge types a pixel belongs to
     neighbor_sum = np.zeros_like(classification, dtype=int)
     for k in masks:
         neighbor_sum += masks[k].astype(int)
         
     masks['Mixed'] = (neighbor_sum >= 2)
+
+    # --- Interior / "No Neighbor" Logic ---
+    # Pixels that are valid class but NOT an edge and NOT mixed
+    # Since Mixed implies at least 2 edges, checking neighbor_sum == 0 is sufficient
+    
+    masks['IN'] = ice_bool & (neighbor_sum == 0)
+    masks['WN'] = water_bool & (neighbor_sum == 0)
+
+    # --- Interior Cloud (CN) ---
+    # A cloud pixel is "Interior" if it is not touching Ice or Water.
+    # Note: 'dilated_ice' encompasses Ice + its immediate boundary.
+    # If a cloud pixel is True, and dilated_ice is True, that cloud is touching ice.
+    
+    cloud_touching_ice = cloud_bool & dilated_ice
+    cloud_touching_water = cloud_bool & dilated_water
+    
+    # CN = Cloud AND NOT touching ice AND NOT touching water
+    masks['CN'] = cloud_bool & (~cloud_touching_ice) & (~cloud_touching_water)
 
     return masks
 

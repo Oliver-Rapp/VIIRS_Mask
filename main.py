@@ -17,7 +17,6 @@ def process_single_scene(args):
 
     # 3. Ice Check
     ice_count = np.count_nonzero(cls == 2)
-    # DEBUG: print(f"{ts}: Ice count {ice_count}") 
     if ice_count < config.MIN_ICE_PIXELS: return None
 
     # --- CALCULATE COVERAGE ---
@@ -60,7 +59,6 @@ def process_single_scene(args):
                 hist, _ = np.histogram(vals, bins=config.BINS[var_name])
                 local_counts[var_name][key] += hist
 
-    # --- FIX: INCLUDE 'ts' IN RETURN ---
     return {
         'ts': ts, 
         'counts': local_counts, 
@@ -74,9 +72,6 @@ def main():
     file_groups = data_io.get_file_groups(config.DATA_DIR)
     all_timestamps = sorted(list(file_groups.keys()))
     
-    if config.Example_Run:
-        all_timestamps = all_timestamps[:10]
-
     print(f"Found {len(all_timestamps)} scenes to process.")
 
     tasks = []
@@ -91,14 +86,14 @@ def main():
     master_coverage = np.zeros((len(config.COVERAGE_LON_BINS)-1, len(config.COVERAGE_LAT_BINS)-1))
 
     processed_count = 0
-    processed_timestamps = [] # NEW: Track list of successfully processed times
+    processed_timestamps = [] 
     
     with mp.Pool(config.NUM_WORKERS) as pool:
         for result in pool.imap_unordered(process_single_scene, tasks):
             if result is None: continue
             
             processed_count += 1
-            processed_timestamps.append(result['ts']) # Store timestamp
+            processed_timestamps.append(result['ts'])
             
             for var, key_dict in result['counts'].items():
                 for key, hist in key_dict.items():
@@ -109,14 +104,12 @@ def main():
             if processed_count % 10 == 0:
                 print(f"Processed {processed_count} scenes...")
 
-    # Sort timestamps to find start/end
     processed_timestamps.sort()
     
     meta = {
         'count': processed_count,
         'duration': datetime.datetime.now() - start_time,
         'coverage_grid': master_coverage,
-        # NEW: Add time span info
         'time_start': processed_timestamps[0] if processed_timestamps else "N/A",
         'time_end': processed_timestamps[-1] if processed_timestamps else "N/A"
     }
