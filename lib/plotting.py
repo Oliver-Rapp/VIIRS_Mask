@@ -13,6 +13,7 @@ def generate_debug_suite(classification, neighbors, timestamp):
     """
     Generates the debug map suite.
     """
+    # Use the timestamped run directory
     scene_dir = os.path.join(config.DEBUG_DIR, timestamp)
     if not os.path.exists(scene_dir):
         os.makedirs(scene_dir)
@@ -68,7 +69,6 @@ def generate_debug_suite(classification, neighbors, timestamp):
         save_layer(cloud_keys, "03_cloud_mixed.png", "Cloud Neighbors & Mixed")
 
         # Map 4: Interior/Pure Classes
-        # Note: These are mutually exclusive with the edges above
         interior_keys = ['IN', 'WN', 'CN']
         save_layer(interior_keys, "04_interior_classes.png", "Interior / No Neighbors")
         

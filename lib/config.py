@@ -6,13 +6,17 @@ import matplotlib.colors as mcolors
 # ================= PATHS =================
 DATA_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/data/20250403_noaa21-viirs-pps'
 OUTPUT_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/output_multi_scene'
-DEBUG_DIR = os.path.join(OUTPUT_DIR, 'debug_maps')
+
+# Generate Timestamp first to use in paths
+TIMESTAMP = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+PDF_FILENAME = f"VIIRS_Report_{TIMESTAMP}.pdf"
+
+# Debug maps will go into: output/debug_maps/20250122_150000/
+DEBUG_BASE = os.path.join(OUTPUT_DIR, 'debug_maps')
+DEBUG_DIR = os.path.join(DEBUG_BASE, TIMESTAMP)
 
 if not os.path.exists(DEBUG_DIR):
     os.makedirs(DEBUG_DIR)
-
-TIMESTAMP = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-PDF_FILENAME = f"VIIRS_Report_{TIMESTAMP}.pdf"
 
 # ================= RUN SETTINGS =================
 NUM_WORKERS = None           
@@ -65,7 +69,6 @@ XLIMS = {
 }
 
 # ================= PLOTTING DEFINITIONS =================
-# Added IN, WN, CN to the keys list
 KEYS = [
     'iNw', 'i2Nw', 'i3Nw', 
     'wNi', 'w2Ni', 'w3Ni', 
@@ -86,7 +89,6 @@ LABEL_MAP = {
     'CN': 'Cloud (Interior)'
 }
 
-# Updated Groups to include the specific comparison requested
 PLOT_GROUPS = {
     'Ice Analysis':   ['IN', 'iNw', 'iNc'],
     'Water Analysis': ['WN', 'wNi', 'wNc'],
@@ -122,7 +124,8 @@ NEIGHBOR_COLORS = {
     'Mixed': 'deeppink',
     
     # New "No Neighbor" / Interior Classes
-    'IN': 'white',       # Pure Ice
-    'WN': 'blue',        # Pure Water
-    'CN': 'lightgray'    # Pure Cloud
+    # Colors chosen for visibility on white background
+    'IN': 'darkviolet',  # High contrast Ice
+    'WN': 'blue',        # Standard Water
+    'CN': 'dimgray'      # Dark Grey for Cloud (Visible)
 }
