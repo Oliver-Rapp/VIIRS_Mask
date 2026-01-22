@@ -33,6 +33,24 @@ def get_file_groups(directory):
     valid_groups = {k: v for k, v in groups.items() if len(v) == 4}
     return valid_groups
 
+def load_var(ds, var_name, ys, xs):
+    """
+    Safely loads a variable from a NetCDF dataset.
+    Handles scaling/offset (via netCDF4) and converts MaskedArrays to NaN.
+    """
+    if var_name not in ds.variables:
+        # Return a block of NaNs if variable is missing
+        shape = (ys.stop - ys.start, xs.stop - xs.start)
+        return np.full(shape, np.nan)
+
+    data = ds.variables[var_name][0, ys, xs]
+    
+    # If the data is a MaskedArray (contains _FillValue), convert fill values to NaN
+    if np.ma.is_masked(data):
+        return data.filled(np.nan)
+    
+    return data
+
 def load_scene_data(files):
     """
     Loads data using bounding box slicing to save memory.
@@ -75,26 +93,27 @@ def load_scene_data(files):
                 ys = slice(None); xs = slice(None)
                 lat = lat_full; lon = lon_full
 
-            # Load Variables (masked=True handles fill values automatically)
-            t11 = ds_l1b.variables['image3'][0, ys, xs]
-            t12 = ds_l1b.variables['image4'][0, ys, xs]
-            t37 = ds_l1b.variables['image5'][0, ys, xs]
-            t87 = ds_l1b.variables['image7'][0, ys, xs]
-            sunz = ds_l1b.variables['sunzenith'][0, ys, xs]
-            satz = ds_l1b.variables['satzenith'][0, ys, xs]
+            # Load Variables using safe loader
+            t11 = load_var(ds_l1b, 'image3', ys, xs)
+            t12 = load_var(ds_l1b, 'image4', ys, xs)
+            t37 = load_var(ds_l1b, 'image5', ys, xs)
+            t87 = load_var(ds_l1b, 'image7', ys, xs)
+            sunz = load_var(ds_l1b, 'sunzenith', ys, xs)
+            satz = load_var(ds_l1b, 'satzenith', ys, xs)
 
         with Dataset(files['cma'], 'r') as ds:
+            # CMA is usually byte data, keep raw (masked handled by fill value 255 later)
             cma = ds.variables['cma_extended'][0, ys, xs]
 
         with Dataset(files['geo'], 'r') as ds:
             landuse = ds.variables['landuse'][0, ys, xs]
 
         with Dataset(files['tex'], 'r') as ds:
-            # Load textures as float
-            r06_tex = ds.variables['r06'][0, ys, xs].astype(float)
-            t11_tex = ds.variables['t11'][0, ys, xs].astype(float)
-            t11t12_tex = ds.variables['t11t12'][0, ys, xs].astype(float)
-            t37t12_tex = ds.variables['t37t12'][0, ys, xs].astype(float)
+            # Load textures, convert masked to NaN automatically
+            r06_tex = load_var(ds, 'r06', ys, xs)
+            t11_tex = load_var(ds, 't11', ys, xs)
+            t11t12_tex = load_var(ds, 't11t12', ys, xs)
+            t37t12_tex = load_var(ds, 't37t12', ys, xs)
 
         return {
             'lat': lat, 'lon': lon,

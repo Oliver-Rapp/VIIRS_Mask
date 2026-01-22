@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.colors as mcolors
 
 # ================= PATHS =================
-DATA_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/data/data-case1'
+DATA_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/data/20250403_noaa21-viirs-pps'
 OUTPUT_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/output_multi_scene'
 DEBUG_DIR = os.path.join(OUTPUT_DIR, 'debug_maps')
 
