@@ -94,7 +94,8 @@ PLOT_GROUPS = {
     'Ice Analysis':   ['IN', 'InW', 'InC'],
     'Water Analysis': ['WN', 'WnI', 'WnC'],
     'Cloud Analysis': ['CN', 'CnI', 'CnW'], 
-    'Ice vs Water Edges': ['InW', 'WnI'],
+    # Added IN and WN for reference here:
+    'Ice vs Water Edges': ['InW', 'WnI', 'IN', 'WN'],
     'Mixed vs Pure': ['Mixed', 'IN', 'WN']
 }
 
