@@ -22,7 +22,6 @@ def generate_debug_suite(classification, neighbors, timestamp, miz_mask=None):
         fig, ax = plt.subplots(figsize=(12, 10))
         
         # 1. Plot Base Map
-        # We plot the base map slightly dimmer if we are highlighting the MIZ mask
         alpha = 0.6 if extra_mask is not None else 1.0
         
         ax.imshow(classification, interpolation='none', 
@@ -92,6 +91,15 @@ def generate_debug_suite(classification, neighbors, timestamp, miz_mask=None):
         print(f"Plotting failed for {timestamp}: {e}")
         return False
 
+def _format_count(n):
+    """Helper to format large numbers (e.g. 1.2M, 45.5K)"""
+    if n >= 1e6:
+        return f"{n/1e6:.2f}M"
+    elif n >= 1e3:
+        return f"{n/1e3:.1f}K"
+    else:
+        return str(int(n))
+
 def _plot_histogram_pages(pdf, counts_dict, title_prefix=""):
     for var_name, title in config.PLOT_ORDER:
         bins = config.BINS[var_name]
@@ -113,9 +121,12 @@ def _plot_histogram_pages(pdf, counts_dict, title_prefix=""):
                     # Normalized density
                     density = count_hist / (total_count * bin_width)
                     
-                    label = config.LABEL_MAP.get(k, k)
+                    label_text = config.LABEL_MAP.get(k, k)
+                    count_str = _format_count(total_count)
+                    full_label = f"{label_text} ({count_str})"
+                    
                     plt.plot(bin_centers, density, 
-                             label=label, 
+                             label=full_label, 
                              color=config.NEIGHBOR_COLORS.get(k, 'black'),
                              linewidth=2)
 
@@ -128,6 +139,7 @@ def _plot_histogram_pages(pdf, counts_dict, title_prefix=""):
                 plt.xlim(config.XLIMS[var_name])
             
             if has_data:
+                # Place legend, now containing N counts
                 plt.legend()
             else:
                 plt.text(0.5, 0.5, "No Data", ha='center', transform=plt.gca().transAxes)
@@ -169,6 +181,7 @@ def generate_pdf_report(meta, master_counts, master_counts_miz=None):
             f"Processing Time:  {meta['duration']}\n\n"
             f"GEOGRAPHIC & SOLAR CONSTRAINTS\n"
             f"------------------------------------------------------------\n"
+            f"Region:           {config.SELECTED_REGION.upper()}\n"
             f"Bounding Box:     Lat {config.CROP_BOUNDS['lat_min']} to {config.CROP_BOUNDS['lat_max']}\n"
             f"                  Lon {config.CROP_BOUNDS['lon_min']} to {config.CROP_BOUNDS['lon_max']}\n"
             f"Max Solar Zenith: {config.MAX_SOLAR_ZENITH}°\n\n"
