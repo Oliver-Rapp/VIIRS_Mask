@@ -21,11 +21,10 @@ def generate_debug_suite(classification, neighbors, timestamp):
     def save_layer(active_keys, fname, title):
         fig, ax = plt.subplots(figsize=(12, 10))
         
-        # 1. Plot Base Map (Land, Water, Ice, Cloud)
+        # 1. Plot Base Map
         ax.imshow(classification, interpolation='none', 
                   cmap=config.MOSAIC_CMAP, norm=config.MOSAIC_NORM)
         
-        # Create Legend for Base classes
         patches = [
             mpatches.Patch(color='black', label='NoData'),
             mpatches.Patch(color='blue', label='Water'),
@@ -40,7 +39,6 @@ def generate_debug_suite(classification, neighbors, timestamp):
                 color = config.NEIGHBOR_COLORS[k]
                 mask = neighbors[k]
                 
-                # Create RGBA overlay
                 ov = np.zeros((*mask.shape, 4))
                 ov[mask] = matplotlib.colors.to_rgba(color)
                 ax.imshow(ov, interpolation='none')
@@ -57,17 +55,14 @@ def generate_debug_suite(classification, neighbors, timestamp):
         plt.close()
 
     try:
-        # Map 1: Base Classification
         save_layer([], "01_base_class.png", "Base Classification")
         
-        # Map 2: The Combined Map (Interior + Neighbors + Mixed)
-        # Using new notation defined in config/core_logic
         combined_keys = [
-            'IN', 'WN', 'CN', # Interiors
-            'I3nW', 'I3nC', 'W3nI', 'W3nC', 'C3nI', 'C3nW', # 3rd degree
-            'I2nW', 'I2nC', 'W2nI', 'W2nC', 'C2nI', 'C2nW', # 2nd degree
-            'InW', 'InC', 'WnI', 'WnC', 'CnI', 'CnW',       # 1st degree
-            'Mixed'                                         # Top layer
+            'IN', 'WN', 'CN', 
+            'I3nW', 'I3nC', 'W3nI', 'W3nC', 'C3nI', 'C3nW', 
+            'I2nW', 'I2nC', 'W2nI', 'W2nC', 'C2nI', 'C2nW', 
+            'InW', 'InC', 'WnI', 'WnC', 'CnI', 'CnW',       
+            'Mixed'                                         
         ]
         save_layer(combined_keys, "02_combined_analysis.png", "Full Classification (Interior, Neighbors, Mixed)")
         
@@ -76,7 +71,54 @@ def generate_debug_suite(classification, neighbors, timestamp):
         print(f"Plotting failed for {timestamp}: {e}")
         return False
 
-def generate_pdf_report(meta, master_counts):
+def _plot_histogram_pages(pdf, counts_dict, title_prefix=""):
+    """
+    Helper function to plot a set of histograms into the PDF.
+    """
+    for var_name, title in config.PLOT_ORDER:
+        bins = config.BINS[var_name]
+        bin_centers = (bins[:-1] + bins[1:]) / 2
+        bin_width = bins[1] - bins[0]
+        
+        for group_name, keys in config.PLOT_GROUPS.items():
+            plt.figure(figsize=(10, 6))
+            has_data = False
+            
+            for k in keys:
+                if k not in counts_dict[var_name]: continue
+                
+                count_hist = counts_dict[var_name][k]
+                total_count = np.sum(count_hist)
+                
+                if total_count > 0:
+                    has_data = True
+                    density = count_hist / (total_count * bin_width)
+                    
+                    label = config.LABEL_MAP.get(k, k)
+                    plt.plot(bin_centers, density, 
+                             label=label, 
+                             color=config.NEIGHBOR_COLORS.get(k, 'black'),
+                             linewidth=2)
+
+            full_title = f"{title_prefix}{title} ({group_name})"
+            plt.title(full_title)
+            plt.xlabel(title)
+            plt.ylabel("Density")
+            
+            if var_name in config.XLIMS:
+                plt.xlim(config.XLIMS[var_name])
+            
+            if has_data:
+                plt.legend()
+            else:
+                plt.text(0.5, 0.5, "No Data", ha='center', transform=plt.gca().transAxes)
+                
+            plt.grid(True, linestyle='--', alpha=0.5)
+            plt.tight_layout()
+            pdf.savefig()
+            plt.close()
+
+def generate_pdf_report(meta, master_counts, master_counts_miz=None):
     pdf_path = os.path.join(config.OUTPUT_DIR, config.PDF_FILENAME)
     print(f"Generating Report: {pdf_path}")
     
@@ -90,6 +132,10 @@ def generate_pdf_report(meta, master_counts):
                 b = config.BINS[key]
                 bin_info.append(f"{key}: {len(b)-1} bins (Range: {b[0]:.1f} to {b[-1]:.1f})")
         bin_str = "\n".join(bin_info)
+
+        miz_str = "Disabled"
+        if config.ENABLE_MIZ_HISTOGRAMS:
+            miz_str = f"Active ({config.MIZ_T11_RANGE[0]}K - {config.MIZ_T11_RANGE[1]}K)"
 
         report_txt = (
             f"VIIRS EDGE ANALYSIS REPORT\n"
@@ -107,6 +153,9 @@ def generate_pdf_report(meta, master_counts):
             f"Bounding Box:     Lat {config.CROP_BOUNDS['lat_min']} to {config.CROP_BOUNDS['lat_max']}\n"
             f"                  Lon {config.CROP_BOUNDS['lon_min']} to {config.CROP_BOUNDS['lon_max']}\n"
             f"Max Solar Zenith: {config.MAX_SOLAR_ZENITH}°\n\n"
+            f"MIZ SUBSET CONFIGURATION\n"
+            f"------------------------------------------------------------\n"
+            f"Filtering:        {miz_str}\n\n"
             f"HISTOGRAM BINNING\n"
             f"------------------------------------------------------------\n"
             f"{bin_str}\n"
@@ -139,14 +188,11 @@ def generate_pdf_report(meta, master_counts):
             config.COVERAGE_LAT_BINS, 
             masked_grid,
             transform=ccrs.PlateCarree(),
-            cmap='plasma',
-            zorder=2,
-            alpha=0.8
+            cmap='plasma', zorder=2, alpha=0.8
         )
         
         bounds = config.CROP_BOUNDS
         n_steps = 100
-        
         l1_x = np.linspace(bounds['lon_min'], bounds['lon_max'], n_steps)
         l1_y = np.full(n_steps, bounds['lat_min'])
         l2_x = np.full(n_steps, bounds['lon_max'])
@@ -169,45 +215,18 @@ def generate_pdf_report(meta, master_counts):
         pdf.savefig()
         plt.close()
 
-        # PAGES 2+: HISTOGRAMS
-        for var_name, title in config.PLOT_ORDER:
-            bins = config.BINS[var_name]
-            bin_centers = (bins[:-1] + bins[1:]) / 2
-            bin_width = bins[1] - bins[0]
-            
-            for group_name, keys in config.PLOT_GROUPS.items():
-                plt.figure(figsize=(10, 6))
-                has_data = False
-                
-                for k in keys:
-                    if k not in master_counts[var_name]: continue
-                    
-                    count_hist = master_counts[var_name][k]
-                    total_count = np.sum(count_hist)
-                    
-                    if total_count > 0:
-                        has_data = True
-                        density = count_hist / (total_count * bin_width)
-                        
-                        label = config.LABEL_MAP.get(k, k)
-                        plt.plot(bin_centers, density, 
-                                 label=label, 
-                                 color=config.NEIGHBOR_COLORS.get(k, 'black'),
-                                 linewidth=2)
+        # PART 1: Standard Plots
+        _plot_histogram_pages(pdf, master_counts, title_prefix="")
 
-                plt.title(f"{title} ({group_name})")
-                plt.xlabel(title)
-                plt.ylabel("Density")
-                
-                if var_name in config.XLIMS:
-                    plt.xlim(config.XLIMS[var_name])
-                
-                if has_data:
-                    plt.legend()
-                else:
-                    plt.text(0.5, 0.5, "No Data", ha='center', transform=plt.gca().transAxes)
-                    
-                plt.grid(True, linestyle='--', alpha=0.5)
-                plt.tight_layout()
-                pdf.savefig()
-                plt.close()
+        # PART 2: MIZ Subset Plots
+        if config.ENABLE_MIZ_HISTOGRAMS and master_counts_miz:
+            # Add a separator page
+            plt.figure(figsize=(11, 8.5))
+            plt.text(0.5, 0.5, 
+                     f"MIZ SUBSET ANALYSIS\n\nTemperature Filter: {config.MIZ_T11_RANGE[0]}K < T11 < {config.MIZ_T11_RANGE[1]}K", 
+                     ha='center', va='center', fontsize=20)
+            plt.axis('off')
+            pdf.savefig()
+            plt.close()
+            
+            _plot_histogram_pages(pdf, master_counts_miz, title_prefix="[MIZ Subset] ")

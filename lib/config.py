@@ -20,6 +20,11 @@ if not os.path.exists(DEBUG_DIR):
 NUM_WORKERS = None           
 NUM_DEBUG_MAPS = 100        
 
+# --- MIZ SUBSET SETTINGS ---
+# Generate a second set of histograms filtered by T11 temperature
+ENABLE_MIZ_HISTOGRAMS = True
+MIZ_T11_RANGE = (268.5, 271.5) # Kelvin
+
 # ================= CROP & THRESHOLDS =================
 USE_CROP = True
 CROP_BOUNDS = {
@@ -87,14 +92,12 @@ KEYS = [
     'Mixed'
 ]
 
-# Labels match the keys exactly as requested
 LABEL_MAP = {k: k for k in KEYS}
 
 PLOT_GROUPS = {
     'Ice Analysis':   ['IN', 'InW', 'InC'],
     'Water Analysis': ['WN', 'WnI', 'WnC'],
     'Cloud Analysis': ['CN', 'CnI', 'CnW'], 
-    # Added IN and WN for reference here:
     'Ice vs Water Edges': ['InW', 'WnI', 'IN', 'WN'],
     'Mixed vs Pure': ['Mixed', 'IN', 'WN']
 }

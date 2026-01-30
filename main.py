@@ -22,7 +22,6 @@ def process_single_scene(args):
     # --- CALCULATE COVERAGE ---
     valid_mask = (cls > 0)
     
-    # Compute 2D histogram for this scene
     scene_coverage, _, _ = np.histogram2d(
         data['lon'][valid_mask][::10], 
         data['lat'][valid_mask][::10], 
@@ -38,30 +37,62 @@ def process_single_scene(args):
         plotting.generate_debug_suite(cls, nbs, ts)
 
     # 6. Histograms
+    # Initialize counts for standard and MIZ subset
     local_counts = {var: {k: np.zeros(len(config.BINS[var])-1) for k in config.KEYS} 
                     for var in config.BINS.keys()}
+    
+    local_counts_miz = None
+    if config.ENABLE_MIZ_HISTOGRAMS:
+        local_counts_miz = {var: {k: np.zeros(len(config.BINS[var])-1) for k in config.KEYS} 
+                            for var in config.BINS.keys()}
     
     for key in config.KEYS:
         if key not in nbs: continue
         mask = nbs[key]
         if not np.any(mask): continue
         
+        # Get the T11 values for this mask to filter for MIZ subset
+        # Note: data['t11'] might contain NaNs, comparisons will be False, which is safe.
+        t11_masked = data['t11'][mask]
+        
+        # Calculate MIZ filter index relative to the masked data
+        miz_indices = None
+        if config.ENABLE_MIZ_HISTOGRAMS:
+            t_min, t_max = config.MIZ_T11_RANGE
+            miz_indices = (t11_masked >= t_min) & (t11_masked <= t_max)
+
         for var_name in config.BINS.keys():
             if var_name not in data: continue
             
             vals = data[var_name][mask]
             
+            # --- Standard Histogram ---
             # Handle masked arrays and NaNs
-            if np.ma.is_masked(vals): vals = vals.compressed()
-            vals = vals[~np.isnan(vals)]
+            valid_vals = vals
+            if np.ma.is_masked(valid_vals): valid_vals = valid_vals.compressed()
+            valid_vals = valid_vals[~np.isnan(valid_vals)]
             
-            if len(vals) > 0:
-                hist, _ = np.histogram(vals, bins=config.BINS[var_name])
+            if len(valid_vals) > 0:
+                hist, _ = np.histogram(valid_vals, bins=config.BINS[var_name])
                 local_counts[var_name][key] += hist
+
+            # --- MIZ Subset Histogram ---
+            if config.ENABLE_MIZ_HISTOGRAMS and miz_indices is not None:
+                # Apply MIZ filter to the current variable's values
+                vals_miz = vals[miz_indices]
+                
+                # Clean NaNs
+                if np.ma.is_masked(vals_miz): vals_miz = vals_miz.compressed()
+                vals_miz = vals_miz[~np.isnan(vals_miz)]
+                
+                if len(vals_miz) > 0:
+                    hist_miz, _ = np.histogram(vals_miz, bins=config.BINS[var_name])
+                    local_counts_miz[var_name][key] += hist_miz
 
     return {
         'ts': ts, 
         'counts': local_counts, 
+        'counts_miz': local_counts_miz,
         'coverage': scene_coverage
     }
 
@@ -79,10 +110,15 @@ def main():
         do_debug = (i < config.NUM_DEBUG_MAPS)
         tasks.append((ts, file_groups[ts], do_debug))
 
+    # Initialize Master Counts
     master_counts = {var: {k: np.zeros(len(config.BINS[var])-1) for k in config.KEYS} 
                      for var in config.BINS.keys()}
     
-    # Grid for coverage map
+    master_counts_miz = None
+    if config.ENABLE_MIZ_HISTOGRAMS:
+        master_counts_miz = {var: {k: np.zeros(len(config.BINS[var])-1) for k in config.KEYS} 
+                             for var in config.BINS.keys()}
+    
     master_coverage = np.zeros((len(config.COVERAGE_LON_BINS)-1, len(config.COVERAGE_LAT_BINS)-1))
 
     processed_count = 0
@@ -95,9 +131,16 @@ def main():
             processed_count += 1
             processed_timestamps.append(result['ts'])
             
+            # Accumulate Standard
             for var, key_dict in result['counts'].items():
                 for key, hist in key_dict.items():
                     master_counts[var][key] += hist
+            
+            # Accumulate MIZ Subset
+            if config.ENABLE_MIZ_HISTOGRAMS and result['counts_miz']:
+                for var, key_dict in result['counts_miz'].items():
+                    for key, hist in key_dict.items():
+                        master_counts_miz[var][key] += hist
             
             master_coverage += result['coverage']
             
@@ -115,7 +158,7 @@ def main():
     }
     
     if processed_count > 0:
-        plotting.generate_pdf_report(meta, master_counts)
+        plotting.generate_pdf_report(meta, master_counts, master_counts_miz)
         print("Done. PDF generated.")
     else:
         print("No scenes processed (check thresholds/crop).")
