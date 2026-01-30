@@ -8,8 +8,39 @@ DATA_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/data/20250403_noaa21-viirs-pps
 OUTPUT_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/output_multi_scene'
 
 TIMESTAMP = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-PDF_FILENAME = f"VIIRS_Report_{TIMESTAMP}.pdf"
 
+# ================= REGION SELECTION =================
+# Define available bounding boxes here
+PREDEFINED_REGIONS = {
+    'svalbard': {
+        'lat_min': 74.0, 'lat_max': 81.0,
+        'lon_min': 10.0, 'lon_max': 35.0
+    },
+    'barents_and_fram': {
+        # The original broad bounds
+        'lat_min': 67.801, 'lat_max': 82.792,
+        'lon_min': -33.363, 'lon_max': 76.105
+    },
+    'barents_sea': {
+        'lat_min': 70.0, 'lat_max': 78.0,
+        'lon_min': 15.0, 'lon_max': 55.0
+    }
+}
+
+# --- SELECT YOUR REGION HERE ---
+SELECTED_REGION = 'barents_and_fram' 
+
+# Set the active bounds based on selection
+if SELECTED_REGION not in PREDEFINED_REGIONS:
+    raise ValueError(f"Region '{SELECTED_REGION}' not found in PREDEFINED_REGIONS.")
+
+CROP_BOUNDS = PREDEFINED_REGIONS[SELECTED_REGION]
+USE_CROP = True
+
+# Update Filename to include Region Name
+PDF_FILENAME = f"VIIRS_Report_{SELECTED_REGION}_{TIMESTAMP}.pdf"
+
+# ================= DEBUG DIRS =================
 DEBUG_BASE = os.path.join(OUTPUT_DIR, 'debug_maps')
 DEBUG_DIR = os.path.join(DEBUG_BASE, TIMESTAMP)
 
@@ -25,12 +56,7 @@ NUM_DEBUG_MAPS = 100
 ENABLE_MIZ_HISTOGRAMS = True
 MIZ_T11_RANGE = (268.5, 271.5) # Kelvin
 
-# ================= CROP & THRESHOLDS =================
-USE_CROP = True
-CROP_BOUNDS = {
-    'lat_min': 74.0, 'lat_max': 81.0,
-    'lon_min': 10.0, 'lon_max': 35.0
-}
+# ================= THRESHOLDS =================
 LATITUDE_THRESHOLD = 60.0
 MAX_SOLAR_ZENITH = 85.0
 MIN_ICE_PIXELS = 50 
@@ -92,6 +118,7 @@ KEYS = [
     'Mixed'
 ]
 
+# Labels match the keys exactly as requested
 LABEL_MAP = {k: k for k in KEYS}
 
 PLOT_GROUPS = {
