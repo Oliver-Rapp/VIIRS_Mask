@@ -32,12 +32,28 @@ def process_single_scene(args):
     # 4. Neighbors
     nbs = core_logic.compute_neighbors(cls, cloud_clean)
     
+    # --- MIZ MASK CALCULATION ---
+    # We calculate this here so we can use it for both Histograms AND Plotting
+    miz_mask = None
+    if config.ENABLE_MIZ_HISTOGRAMS:
+        t_min, t_max = config.MIZ_T11_RANGE
+        # Load T11
+        t11 = data['t11']
+        
+        # Handle Masked Array if present to avoid warnings
+        if np.ma.is_masked(t11):
+            t11 = t11.filled(np.nan)
+            
+        # Create boolean mask
+        with np.errstate(invalid='ignore'): # Silence NaN comparison warnings
+            miz_mask = (t11 >= t_min) & (t11 <= t_max)
+
     # 5. Plotting
     if save_debug:
-        plotting.generate_debug_suite(cls, nbs, ts)
+        # Pass the miz_mask to the plotter
+        plotting.generate_debug_suite(cls, nbs, ts, miz_mask)
 
     # 6. Histograms
-    # Initialize counts for standard and MIZ subset
     local_counts = {var: {k: np.zeros(len(config.BINS[var])-1) for k in config.KEYS} 
                     for var in config.BINS.keys()}
     
@@ -51,15 +67,10 @@ def process_single_scene(args):
         mask = nbs[key]
         if not np.any(mask): continue
         
-        # Get the T11 values for this mask to filter for MIZ subset
-        # Note: data['t11'] might contain NaNs, comparisons will be False, which is safe.
-        t11_masked = data['t11'][mask]
-        
-        # Calculate MIZ filter index relative to the masked data
+        # Calculate intersection of Class Mask and MIZ Mask
         miz_indices = None
-        if config.ENABLE_MIZ_HISTOGRAMS:
-            t_min, t_max = config.MIZ_T11_RANGE
-            miz_indices = (t11_masked >= t_min) & (t11_masked <= t_max)
+        if miz_mask is not None:
+            miz_indices = mask & miz_mask
 
         for var_name in config.BINS.keys():
             if var_name not in data: continue
@@ -67,7 +78,6 @@ def process_single_scene(args):
             vals = data[var_name][mask]
             
             # --- Standard Histogram ---
-            # Handle masked arrays and NaNs
             valid_vals = vals
             if np.ma.is_masked(valid_vals): valid_vals = valid_vals.compressed()
             valid_vals = valid_vals[~np.isnan(valid_vals)]
@@ -78,10 +88,14 @@ def process_single_scene(args):
 
             # --- MIZ Subset Histogram ---
             if config.ENABLE_MIZ_HISTOGRAMS and miz_indices is not None:
-                # Apply MIZ filter to the current variable's values
-                vals_miz = vals[miz_indices]
+                # We need values where BOTH (Class Mask) AND (MIZ Mask) are true
+                # Since we are iterating over 'vals' which is data[mask],
+                # we need to subset 'vals' using the MIZ condition relative to those pixels.
                 
-                # Clean NaNs
+                # However, it is safer/cleaner to just index the original data 
+                # using the combined boolean mask (miz_indices)
+                vals_miz = data[var_name][miz_indices]
+                
                 if np.ma.is_masked(vals_miz): vals_miz = vals_miz.compressed()
                 vals_miz = vals_miz[~np.isnan(vals_miz)]
                 
@@ -110,7 +124,6 @@ def main():
         do_debug = (i < config.NUM_DEBUG_MAPS)
         tasks.append((ts, file_groups[ts], do_debug))
 
-    # Initialize Master Counts
     master_counts = {var: {k: np.zeros(len(config.BINS[var])-1) for k in config.KEYS} 
                      for var in config.BINS.keys()}
     
@@ -131,12 +144,10 @@ def main():
             processed_count += 1
             processed_timestamps.append(result['ts'])
             
-            # Accumulate Standard
             for var, key_dict in result['counts'].items():
                 for key, hist in key_dict.items():
                     master_counts[var][key] += hist
             
-            # Accumulate MIZ Subset
             if config.ENABLE_MIZ_HISTOGRAMS and result['counts_miz']:
                 for var, key_dict in result['counts_miz'].items():
                     for key, hist in key_dict.items():

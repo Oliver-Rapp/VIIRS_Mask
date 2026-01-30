@@ -9,7 +9,7 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from . import config
 
-def generate_debug_suite(classification, neighbors, timestamp):
+def generate_debug_suite(classification, neighbors, timestamp, miz_mask=None):
     """
     Generates the debug map suite.
     """
@@ -18,12 +18,15 @@ def generate_debug_suite(classification, neighbors, timestamp):
     if not os.path.exists(scene_sub_dir):
         os.makedirs(scene_sub_dir)
         
-    def save_layer(active_keys, fname, title):
+    def save_layer(active_keys, fname, title, extra_mask=None, extra_color=None, extra_label=None):
         fig, ax = plt.subplots(figsize=(12, 10))
         
         # 1. Plot Base Map
+        # We plot the base map slightly dimmer if we are highlighting the MIZ mask
+        alpha = 0.6 if extra_mask is not None else 1.0
+        
         ax.imshow(classification, interpolation='none', 
-                  cmap=config.MOSAIC_CMAP, norm=config.MOSAIC_NORM)
+                  cmap=config.MOSAIC_CMAP, norm=config.MOSAIC_NORM, alpha=alpha)
         
         patches = [
             mpatches.Patch(color='black', label='NoData'),
@@ -46,6 +49,13 @@ def generate_debug_suite(classification, neighbors, timestamp):
                 label = config.LABEL_MAP.get(k, k)
                 patches.append(mpatches.Patch(color=color, label=label))
 
+        # 3. Overlay Extra Mask (e.g. MIZ Subset)
+        if extra_mask is not None and np.any(extra_mask):
+            ov = np.zeros((*extra_mask.shape, 4))
+            ov[extra_mask] = matplotlib.colors.to_rgba(extra_color)
+            ax.imshow(ov, interpolation='none')
+            patches.append(mpatches.Patch(color=extra_color, label=extra_label))
+
         ax.legend(handles=patches, loc='upper left', bbox_to_anchor=(1, 1), fontsize='x-small')
         
         ax.set_title(f"{timestamp}\n{title}")
@@ -55,8 +65,10 @@ def generate_debug_suite(classification, neighbors, timestamp):
         plt.close()
 
     try:
+        # Map 1: Base Classification
         save_layer([], "01_base_class.png", "Base Classification")
         
+        # Map 2: The Combined Map (Interior + Neighbors + Mixed)
         combined_keys = [
             'IN', 'WN', 'CN', 
             'I3nW', 'I3nC', 'W3nI', 'W3nC', 'C3nI', 'C3nW', 
@@ -64,7 +76,16 @@ def generate_debug_suite(classification, neighbors, timestamp):
             'InW', 'InC', 'WnI', 'WnC', 'CnI', 'CnW',       
             'Mixed'                                         
         ]
-        save_layer(combined_keys, "02_combined_analysis.png", "Full Classification (Interior, Neighbors, Mixed)")
+        save_layer(combined_keys, "02_combined_analysis.png", "Full Classification")
+
+        # Map 5: MIZ Diagnostic (New)
+        if miz_mask is not None:
+            t_range_str = f"{config.MIZ_T11_RANGE[0]}K-{config.MIZ_T11_RANGE[1]}K"
+            save_layer([], "05_miz_diagnostic.png", 
+                       f"MIZ Subset Diagnostic ({t_range_str})",
+                       extra_mask=miz_mask,
+                       extra_color='gold',
+                       extra_label='Pixels in Range')
         
         return True
     except Exception as e:
@@ -72,9 +93,6 @@ def generate_debug_suite(classification, neighbors, timestamp):
         return False
 
 def _plot_histogram_pages(pdf, counts_dict, title_prefix=""):
-    """
-    Helper function to plot a set of histograms into the PDF.
-    """
     for var_name, title in config.PLOT_ORDER:
         bins = config.BINS[var_name]
         bin_centers = (bins[:-1] + bins[1:]) / 2
@@ -92,6 +110,7 @@ def _plot_histogram_pages(pdf, counts_dict, title_prefix=""):
                 
                 if total_count > 0:
                     has_data = True
+                    # Normalized density
                     density = count_hist / (total_count * bin_width)
                     
                     label = config.LABEL_MAP.get(k, k)
@@ -123,7 +142,7 @@ def generate_pdf_report(meta, master_counts, master_counts_miz=None):
     print(f"Generating Report: {pdf_path}")
     
     with PdfPages(pdf_path) as pdf:
-        # PAGE 1: METADATA & COVERAGE
+        # PAGE 1: METADATA
         fig = plt.figure(figsize=(11, 8.5)) 
         
         bin_info = []
@@ -192,15 +211,15 @@ def generate_pdf_report(meta, master_counts, master_counts_miz=None):
         )
         
         bounds = config.CROP_BOUNDS
-        n_steps = 100
-        l1_x = np.linspace(bounds['lon_min'], bounds['lon_max'], n_steps)
-        l1_y = np.full(n_steps, bounds['lat_min'])
-        l2_x = np.full(n_steps, bounds['lon_max'])
-        l2_y = np.linspace(bounds['lat_min'], bounds['lat_max'], n_steps)
-        l3_x = np.linspace(bounds['lon_max'], bounds['lon_min'], n_steps)
-        l3_y = np.full(n_steps, bounds['lat_max'])
-        l4_x = np.full(n_steps, bounds['lon_min'])
-        l4_y = np.linspace(bounds['lat_max'], bounds['lat_min'], n_steps)
+        
+        l1_x = np.linspace(bounds['lon_min'], bounds['lon_max'], 100)
+        l1_y = np.full(100, bounds['lat_min'])
+        l2_x = np.full(100, bounds['lon_max'])
+        l2_y = np.linspace(bounds['lat_min'], bounds['lat_max'], 100)
+        l3_x = np.linspace(bounds['lon_max'], bounds['lon_min'], 100)
+        l3_y = np.full(100, bounds['lat_max'])
+        l4_x = np.full(100, bounds['lon_min'])
+        l4_y = np.linspace(bounds['lat_max'], bounds['lat_min'], 100)
         
         box_lons = np.concatenate([l1_x, l2_x, l3_x, l4_x])
         box_lats = np.concatenate([l1_y, l2_y, l3_y, l4_y])
@@ -220,7 +239,6 @@ def generate_pdf_report(meta, master_counts, master_counts_miz=None):
 
         # PART 2: MIZ Subset Plots
         if config.ENABLE_MIZ_HISTOGRAMS and master_counts_miz:
-            # Add a separator page
             plt.figure(figsize=(11, 8.5))
             plt.text(0.5, 0.5, 
                      f"MIZ SUBSET ANALYSIS\n\nTemperature Filter: {config.MIZ_T11_RANGE[0]}K < T11 < {config.MIZ_T11_RANGE[1]}K", 
