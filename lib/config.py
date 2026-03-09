@@ -142,6 +142,28 @@ PLOT_ORDER = [
     ('t37t12_tex', 't37t12-texture')
 ]
 
+# ================= SATZEN ANALYSIS SETTINGS =================
+ENABLE_SATZEN_ANALYSIS = True
+
+# Classes to analyse (subset of KEYS)
+SATZEN_ANALYSIS_CLASSES = ['IN', 'WN']
+
+# Satzen bin ranges as (min_deg, max_deg, label) tuples
+SATZEN_RANGES = [
+    (0.0,  36.2, '0–36.2°'),
+    (36.2, 52.5, '36.2–52.5°'),
+    (52.5, 70.0, '52.5–70°'),
+]
+
+# Which brightness temperature differences to analyse
+SATZEN_DIFF_VARS = ['diff1', 'diff2', 'diff3']
+
+# Plot mode: 'histogram' | 'scatter' | 'both'
+SATZEN_PLOT_MODE = 'both'
+
+# One colour per satzen range (must match length of SATZEN_RANGES)
+SATZEN_RANGE_COLORS = ['tab:blue', 'tab:orange', 'tab:green']
+
 # ================= COLORS =================
 COLORS_LIST = ['black', 'blue', 'white', 'silver', 'green']
 MOSAIC_CMAP = mcolors.ListedColormap(COLORS_LIST)

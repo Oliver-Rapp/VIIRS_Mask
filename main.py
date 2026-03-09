@@ -103,11 +103,107 @@ def process_single_scene(args):
                     hist_miz, _ = np.histogram(vals_miz, bins=config.BINS[var_name])
                     local_counts_miz[var_name][key] += hist_miz
 
+    # --- SATZEN ANALYSIS ---
+    local_satzen_hist = None
+    local_satzen_2d   = None
+    local_satzen_hist_miz = None
+    local_satzen_2d_miz   = None
+
+    if config.ENABLE_SATZEN_ANALYSIS:
+        range_labels = [lbl for _, _, lbl in config.SATZEN_RANGES]
+
+        local_satzen_hist = {
+            lbl: {dv: {cls: np.zeros(len(config.BINS[dv]) - 1)
+                       for cls in config.SATZEN_ANALYSIS_CLASSES}
+                  for dv in config.SATZEN_DIFF_VARS}
+            for lbl in range_labels
+        }
+        local_satzen_2d = {
+            dv: {cls: np.zeros((len(config.BINS['satz']) - 1, len(config.BINS[dv]) - 1))
+                 for cls in config.SATZEN_ANALYSIS_CLASSES}
+            for dv in config.SATZEN_DIFF_VARS
+        }
+
+        if config.ENABLE_MIZ_HISTOGRAMS and miz_mask is not None:
+            local_satzen_hist_miz = {
+                lbl: {dv: {cls: np.zeros(len(config.BINS[dv]) - 1)
+                           for cls in config.SATZEN_ANALYSIS_CLASSES}
+                      for dv in config.SATZEN_DIFF_VARS}
+                for lbl in range_labels
+            }
+            local_satzen_2d_miz = {
+                dv: {cls: np.zeros((len(config.BINS['satz']) - 1, len(config.BINS[dv]) - 1))
+                     for cls in config.SATZEN_ANALYSIS_CLASSES}
+                for dv in config.SATZEN_DIFF_VARS
+            }
+
+        satz_arr = data['satz']
+        if np.ma.is_masked(satz_arr):
+            satz_arr = satz_arr.filled(np.nan)
+
+        for cls_key in config.SATZEN_ANALYSIS_CLASSES:
+            if cls_key not in nbs: continue
+            cls_mask_arr = nbs[cls_key]
+            if not np.any(cls_mask_arr): continue
+
+            sz = satz_arr[cls_mask_arr]
+
+            for dv in config.SATZEN_DIFF_VARS:
+                if dv not in data: continue
+
+                dv_arr = data[dv]
+                if np.ma.is_masked(dv_arr):
+                    dv_arr = dv_arr.filled(np.nan)
+                diff = dv_arr[cls_mask_arr]
+
+                valid = ~np.isnan(sz) & ~np.isnan(diff)
+                sz_c   = sz[valid]
+                diff_c = diff[valid]
+                if len(sz_c) == 0: continue
+
+                # 2D histogram
+                h2d, _, _ = np.histogram2d(sz_c, diff_c,
+                                           bins=[config.BINS['satz'], config.BINS[dv]])
+                local_satzen_2d[dv][cls_key] += h2d
+
+                # 1D histograms per satzen range
+                ranges = config.SATZEN_RANGES
+                for i, (lo, hi, lbl) in enumerate(ranges):
+                    last = (i == len(ranges) - 1)
+                    rng = (sz_c >= lo) & (sz_c <= hi if last else sz_c < hi)
+                    if np.any(rng):
+                        h1d, _ = np.histogram(diff_c[rng], bins=config.BINS[dv])
+                        local_satzen_hist[lbl][dv][cls_key] += h1d
+
+                # MIZ subset
+                if local_satzen_hist_miz is not None and miz_mask is not None:
+                    miz_cls = cls_mask_arr & miz_mask
+                    if np.any(miz_cls):
+                        sz_m   = satz_arr[miz_cls]
+                        diff_m = dv_arr[miz_cls]
+                        valid_m = ~np.isnan(sz_m) & ~np.isnan(diff_m)
+                        sz_mc   = sz_m[valid_m]
+                        diff_mc = diff_m[valid_m]
+                        if len(sz_mc) > 0:
+                            h2d_m, _, _ = np.histogram2d(sz_mc, diff_mc,
+                                                         bins=[config.BINS['satz'], config.BINS[dv]])
+                            local_satzen_2d_miz[dv][cls_key] += h2d_m
+                            for i, (lo, hi, lbl) in enumerate(ranges):
+                                last = (i == len(ranges) - 1)
+                                rng_m = (sz_mc >= lo) & (sz_mc <= hi if last else sz_mc < hi)
+                                if np.any(rng_m):
+                                    h1d_m, _ = np.histogram(diff_mc[rng_m], bins=config.BINS[dv])
+                                    local_satzen_hist_miz[lbl][dv][cls_key] += h1d_m
+
     return {
-        'ts': ts, 
-        'counts': local_counts, 
+        'ts': ts,
+        'counts': local_counts,
         'counts_miz': local_counts_miz,
-        'coverage': scene_coverage
+        'coverage': scene_coverage,
+        'satzen_hist': local_satzen_hist,
+        'satzen_2d':   local_satzen_2d,
+        'satzen_hist_miz': local_satzen_hist_miz,
+        'satzen_2d_miz':   local_satzen_2d_miz,
     }
 
 def main():
@@ -129,9 +225,39 @@ def main():
     
     master_counts_miz = None
     if config.ENABLE_MIZ_HISTOGRAMS:
-        master_counts_miz = {var: {k: np.zeros(len(config.BINS[var])-1) for k in config.KEYS} 
+        master_counts_miz = {var: {k: np.zeros(len(config.BINS[var])-1) for k in config.KEYS}
                              for var in config.BINS.keys()}
-    
+
+    master_satzen_hist = None
+    master_satzen_2d   = None
+    master_satzen_hist_miz = None
+    master_satzen_2d_miz   = None
+    if config.ENABLE_SATZEN_ANALYSIS:
+        range_labels = [lbl for _, _, lbl in config.SATZEN_RANGES]
+        master_satzen_hist = {
+            lbl: {dv: {cls: np.zeros(len(config.BINS[dv]) - 1)
+                       for cls in config.SATZEN_ANALYSIS_CLASSES}
+                  for dv in config.SATZEN_DIFF_VARS}
+            for lbl in range_labels
+        }
+        master_satzen_2d = {
+            dv: {cls: np.zeros((len(config.BINS['satz']) - 1, len(config.BINS[dv]) - 1))
+                 for cls in config.SATZEN_ANALYSIS_CLASSES}
+            for dv in config.SATZEN_DIFF_VARS
+        }
+        if config.ENABLE_MIZ_HISTOGRAMS:
+            master_satzen_hist_miz = {
+                lbl: {dv: {cls: np.zeros(len(config.BINS[dv]) - 1)
+                           for cls in config.SATZEN_ANALYSIS_CLASSES}
+                      for dv in config.SATZEN_DIFF_VARS}
+                for lbl in range_labels
+            }
+            master_satzen_2d_miz = {
+                dv: {cls: np.zeros((len(config.BINS['satz']) - 1, len(config.BINS[dv]) - 1))
+                     for cls in config.SATZEN_ANALYSIS_CLASSES}
+                for dv in config.SATZEN_DIFF_VARS
+            }
+
     master_coverage = np.zeros((len(config.COVERAGE_LON_BINS)-1, len(config.COVERAGE_LAT_BINS)-1))
 
     processed_count = 0
@@ -152,7 +278,24 @@ def main():
                 for var, key_dict in result['counts_miz'].items():
                     for key, hist in key_dict.items():
                         master_counts_miz[var][key] += hist
-            
+
+            if config.ENABLE_SATZEN_ANALYSIS and result['satzen_hist']:
+                for lbl, dv_dict in result['satzen_hist'].items():
+                    for dv, cls_dict in dv_dict.items():
+                        for cls, hist in cls_dict.items():
+                            master_satzen_hist[lbl][dv][cls] += hist
+                for dv, cls_dict in result['satzen_2d'].items():
+                    for cls, h2d in cls_dict.items():
+                        master_satzen_2d[dv][cls] += h2d
+                if result['satzen_hist_miz']:
+                    for lbl, dv_dict in result['satzen_hist_miz'].items():
+                        for dv, cls_dict in dv_dict.items():
+                            for cls, hist in cls_dict.items():
+                                master_satzen_hist_miz[lbl][dv][cls] += hist
+                    for dv, cls_dict in result['satzen_2d_miz'].items():
+                        for cls, h2d in cls_dict.items():
+                            master_satzen_2d_miz[dv][cls] += h2d
+
             master_coverage += result['coverage']
             
             if processed_count % 10 == 0:
@@ -169,7 +312,11 @@ def main():
     }
     
     if processed_count > 0:
-        plotting.generate_pdf_report(meta, master_counts, master_counts_miz)
+        plotting.generate_pdf_report(
+            meta, master_counts, master_counts_miz,
+            master_satzen_hist, master_satzen_2d,
+            master_satzen_hist_miz, master_satzen_2d_miz
+        )
         print("Done. PDF generated.")
     else:
         print("No scenes processed (check thresholds/crop).")

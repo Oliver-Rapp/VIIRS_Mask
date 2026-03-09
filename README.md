@@ -36,14 +36,39 @@ All settings are managed in `lib/config.py`.
 *   **`MAX_SOLAR_ZENITH`**: Default `85.0`. Pixels with a solar zenith angle higher than this (night/deep twilight) are discarded to ensure valid visible channel data.
 
 ### Geographic Crop
-To save memory and focus the analysis (e.g., on Svalbard), use the crop settings:
+To save memory and focus the analysis, select a predefined region or add your own to `PREDEFINED_REGIONS`:
 ```python
+SELECTED_REGION = 'barents_and_fram'  # 'svalbard' | 'barents_sea' | 'barents_and_fram'
 USE_CROP = True
-CROP_BOUNDS = {
-    'lat_min': 74.0, 'lat_max': 81.0,
-    'lon_min': 10.0, 'lon_max': 35.0
-}
 ```
+
+### MIZ Subset
+A second set of histograms can be generated filtering pixels by T11 brightness temperature — targeting the temperature range characteristic of thin or melting sea ice:
+```python
+ENABLE_MIZ_HISTOGRAMS = True
+MIZ_T11_RANGE = (268.5, 271.5)  # Kelvin
+```
+
+### Satellite Zenith Angle Analysis
+To investigate whether the satellite viewing angle affects brightness temperature differences, enable the satzen analysis section:
+```python
+ENABLE_SATZEN_ANALYSIS = True
+```
+
+The relevant settings are:
+
+| Setting | Default | Description |
+| :--- | :--- | :--- |
+| `SATZEN_ANALYSIS_CLASSES` | `['IN', 'WN']` | Which pixel classes to include |
+| `SATZEN_RANGES` | 3 ranges | List of `(min°, max°, label)` tuples defining the viewing angle bins |
+| `SATZEN_DIFF_VARS` | `['diff1','diff2','diff3']` | Which brightness temperature differences to analyse |
+| `SATZEN_PLOT_MODE` | `'both'` | `'histogram'` — density curves per range; `'scatter'` — 2D heatmap; `'both'` |
+| `SATZEN_RANGE_COLORS` | blue/orange/green | One matplotlib colour per satzen range |
+
+The default ranges split the VIIRS swath into three equal-area thirds:
+*   **0–36.2°** — near-nadir
+*   **36.2–52.5°** — mid-swath
+*   **52.5–70°** — outer swath
 
 ## 🚀 Usage
 
@@ -99,9 +124,14 @@ Pixels of one class that are $N$ steps away from a different class.
 
 ## 📊 Outputs
 
-### PDF Report (`VIIRS_Report_YYYYMMDD_HHMMSS.pdf`)
-*   **Page 1:** Run metadata and a geographic heatmap showing scene coverage density.
-*   **Page 2+:** Histograms comparing radiometric properties (T11, T11-T12, Textures) across the different classes defined above.
+### PDF Report (`VIIRS_Report_<region>_YYYYMMDD_HHMMSS.pdf`)
+*   **Page 1:** Run metadata (including active configuration) and a geographic heatmap showing scene coverage density.
+*   **Part 1 — Standard histograms:** Density plots for all variables (T11, diffs, textures, angles) across all pixel classes.
+*   **Part 2 — MIZ subset** *(if enabled)*: Same histograms restricted to pixels within `MIZ_T11_RANGE`.
+*   **Part 3 — Satzen analysis** *(if enabled)*: For `IN` and `WN` pixels, brightness temperature differences (diff1/diff2/diff3) broken down by satellite viewing angle range.
+    *   **Histogram mode:** One density curve per satzen range, colour-coded, for each diff variable and class.
+    *   **Scatter mode:** 2D log-scale heatmap with satellite zenith angle on the X-axis and diff on the Y-axis; range boundaries marked with dashed lines.
+    *   Both all-data and MIZ-subset versions are produced.
 
 ### Debug Maps
 Generated for every scene (up to `NUM_DEBUG_MAPS`) to verify logic visually:
@@ -110,6 +140,7 @@ Generated for every scene (up to `NUM_DEBUG_MAPS`) to verify logic visually:
     *   **Background:** Interior Classes (Dark Violet Ice, Blue Water, Grey Cloud).
     *   **Midground:** 3rd $\to$ 2nd $\to$ 1st Neighbors.
     *   **Foreground:** Mixed pixels (Deep Pink).
+3.  **`05_miz_diagnostic.png`** *(if MIZ enabled)*: Base classification with MIZ-range pixels highlighted in gold.
 
 ## 📝 Notes on Edge Cases
 *   **Coastlines:** Clouds over land are masked out before neighbor calculation. This prevents "False Edges" where Ocean touches a Cloud-over-Land.

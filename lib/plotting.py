@@ -149,7 +149,116 @@ def _plot_histogram_pages(pdf, counts_dict, title_prefix=""):
             pdf.savefig()
             plt.close()
 
-def generate_pdf_report(meta, master_counts, master_counts_miz=None):
+def _plot_satzen_histogram_pages(pdf, satzen_hist, title_prefix=""):
+    """
+    For each diff variable: one figure with one subplot per class (IN, WN).
+    Each subplot shows 3 density lines — one per satzen range.
+    """
+    var_titles = {v: t for v, t in config.PLOT_ORDER}
+
+    for dv in config.SATZEN_DIFF_VARS:
+        if dv not in var_titles or dv not in config.BINS:
+            continue
+
+        bins = config.BINS[dv]
+        bin_centers = (bins[:-1] + bins[1:]) / 2
+        bin_width    = bins[1] - bins[0]
+
+        n_cls = len(config.SATZEN_ANALYSIS_CLASSES)
+        fig, axes = plt.subplots(1, n_cls, figsize=(6 * n_cls, 5), sharey=False)
+        if n_cls == 1:
+            axes = [axes]
+
+        for ax, cls_key in zip(axes, config.SATZEN_ANALYSIS_CLASSES):
+            ax_has_data = False
+            for (lo, hi, lbl), color in zip(config.SATZEN_RANGES, config.SATZEN_RANGE_COLORS):
+                count_hist = satzen_hist[lbl][dv][cls_key]
+                total = np.sum(count_hist)
+                if total > 0:
+                    density = count_hist / (total * bin_width)
+                    ax.plot(bin_centers, density,
+                            label=f"{lbl} ({_format_count(total)})",
+                            color=color, linewidth=2)
+                    ax_has_data = True
+
+            ax.set_title(cls_key)
+            ax.set_xlabel(var_titles[dv])
+            ax.set_ylabel("Density")
+            if dv in config.XLIMS:
+                ax.set_xlim(config.XLIMS[dv])
+            if ax_has_data:
+                ax.legend(fontsize='small')
+            else:
+                ax.text(0.5, 0.5, "No Data", ha='center', transform=ax.transAxes)
+            ax.grid(True, linestyle='--', alpha=0.5)
+
+        fig.suptitle(f"{title_prefix}Satzen Analysis: {var_titles[dv]}", fontsize=12, fontweight='bold')
+        plt.tight_layout()
+        pdf.savefig(fig)
+        plt.close(fig)
+
+
+def _plot_satzen_scatter_pages(pdf, satzen_2d, title_prefix=""):
+    """
+    For each diff variable: one figure with one subplot per class (IN, WN).
+    Each subplot is a 2D density heatmap: X=satellite zenith angle, Y=diff.
+    Vertical dashed lines mark the satzen range boundaries.
+    """
+    from matplotlib.colors import LogNorm
+
+    var_titles = {v: t for v, t in config.PLOT_ORDER}
+    satz_bins = config.BINS['satz']
+
+    for dv in config.SATZEN_DIFF_VARS:
+        if dv not in var_titles or dv not in config.BINS:
+            continue
+
+        diff_bins = config.BINS[dv]
+
+        n_cls = len(config.SATZEN_ANALYSIS_CLASSES)
+        fig, axes = plt.subplots(1, n_cls, figsize=(7 * n_cls, 5))
+        if n_cls == 1:
+            axes = [axes]
+
+        for ax, cls_key in zip(axes, config.SATZEN_ANALYSIS_CLASSES):
+            h2d = satzen_2d[dv][cls_key]  # shape: (n_satz, n_diff)
+
+            if np.sum(h2d) == 0:
+                ax.text(0.5, 0.5, "No Data", ha='center', transform=ax.transAxes)
+                ax.set_title(cls_key)
+                continue
+
+            masked = np.ma.masked_where(h2d.T == 0, h2d.T)
+            vmax = max(1, np.max(h2d))
+            im = ax.pcolormesh(satz_bins, diff_bins, masked,
+                               cmap='plasma',
+                               norm=LogNorm(vmin=1, vmax=vmax))
+
+            # Satzen range boundaries and labels
+            for lo, hi, lbl in config.SATZEN_RANGES:
+                if lo > satz_bins[0]:
+                    ax.axvline(lo, color='white', linestyle='--', linewidth=1.5, alpha=0.8)
+                mid = (lo + hi) / 2.0
+                ax.text(mid, 1.02, lbl,
+                        transform=ax.get_xaxis_transform(),
+                        ha='center', va='bottom', fontsize=7, style='italic')
+
+            plt.colorbar(im, ax=ax, label='Count (log scale)')
+            ax.set_xlabel('Satellite Zenith Angle (°)')
+            ax.set_ylabel(var_titles[dv])
+            ax.set_title(cls_key)
+            if dv in config.XLIMS:
+                ax.set_ylim(config.XLIMS[dv])
+
+        fig.suptitle(f"{title_prefix}Satzen vs {var_titles[dv]}", fontsize=12, fontweight='bold')
+        plt.tight_layout()
+        pdf.savefig(fig)
+        plt.close(fig)
+
+
+def generate_pdf_report(meta, master_counts, master_counts_miz=None,
+                        satzen_hist=None, satzen_2d=None,
+                        satzen_hist_miz=None, satzen_2d_miz=None):
     pdf_path = os.path.join(config.OUTPUT_DIR, config.PDF_FILENAME)
     print(f"Generating Report: {pdf_path}")
     
@@ -167,6 +276,11 @@ def generate_pdf_report(meta, master_counts, master_counts_miz=None):
         miz_str = "Disabled"
         if config.ENABLE_MIZ_HISTOGRAMS:
             miz_str = f"Active ({config.MIZ_T11_RANGE[0]}K - {config.MIZ_T11_RANGE[1]}K)"
+
+        satzen_str = "Disabled"
+        if config.ENABLE_SATZEN_ANALYSIS:
+            ranges_str = ", ".join(f"{lo}–{hi}°" for lo, hi, _ in config.SATZEN_RANGES)
+            satzen_str = f"Active | Mode: {config.SATZEN_PLOT_MODE} | Ranges: {ranges_str}"
 
         report_txt = (
             f"VIIRS EDGE ANALYSIS REPORT\n"
@@ -188,6 +302,9 @@ def generate_pdf_report(meta, master_counts, master_counts_miz=None):
             f"MIZ SUBSET CONFIGURATION\n"
             f"------------------------------------------------------------\n"
             f"Filtering:        {miz_str}\n\n"
+            f"SATZEN ANALYSIS\n"
+            f"------------------------------------------------------------\n"
+            f"Configuration:    {satzen_str}\n\n"
             f"HISTOGRAM BINNING\n"
             f"------------------------------------------------------------\n"
             f"{bin_str}\n"
@@ -261,3 +378,39 @@ def generate_pdf_report(meta, master_counts, master_counts_miz=None):
             plt.close()
             
             _plot_histogram_pages(pdf, master_counts_miz, title_prefix="[MIZ Subset] ")
+
+        # PART 3: Satzen Analysis
+        if config.ENABLE_SATZEN_ANALYSIS and (satzen_hist is not None or satzen_2d is not None):
+            plt.figure(figsize=(11, 8.5))
+            plt.text(0.5, 0.5,
+                     "SATELLITE ZENITH ANGLE ANALYSIS\n\n"
+                     "Brightness temperature differences for IN and WN\n"
+                     "split by three satzen ranges",
+                     ha='center', va='center', fontsize=18)
+            plt.axis('off')
+            pdf.savefig()
+            plt.close()
+
+            mode = config.SATZEN_PLOT_MODE
+            if mode in ('histogram', 'both') and satzen_hist is not None:
+                _plot_satzen_histogram_pages(pdf, satzen_hist)
+            if mode in ('scatter', 'both') and satzen_2d is not None:
+                _plot_satzen_scatter_pages(pdf, satzen_2d)
+
+            # MIZ subset
+            if (config.ENABLE_MIZ_HISTOGRAMS
+                    and (satzen_hist_miz is not None or satzen_2d_miz is not None)):
+                plt.figure(figsize=(11, 8.5))
+                plt.text(0.5, 0.5,
+                         f"SATELLITE ZENITH ANGLE ANALYSIS — MIZ SUBSET\n\n"
+                         f"Temperature filter: "
+                         f"{config.MIZ_T11_RANGE[0]}K < T11 < {config.MIZ_T11_RANGE[1]}K",
+                         ha='center', va='center', fontsize=18)
+                plt.axis('off')
+                pdf.savefig()
+                plt.close()
+
+                if mode in ('histogram', 'both') and satzen_hist_miz is not None:
+                    _plot_satzen_histogram_pages(pdf, satzen_hist_miz, title_prefix="[MIZ] ")
+                if mode in ('scatter', 'both') and satzen_2d_miz is not None:
+                    _plot_satzen_scatter_pages(pdf, satzen_2d_miz, title_prefix="[MIZ] ")
