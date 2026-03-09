@@ -75,13 +75,24 @@ The default ranges split the VIIRS swath into three equal-area thirds:
 Run the main script from the project root:
 
 ```bash
-python main.py
+python main.py [--data-dir PATH] [--output-dir PATH] [--workers N]
 ```
 
-1.  The script scans `DATA_DIR` for valid groups of 4 files (L1B, CMA, Geo, Texture).
-2.  It processes scenes in parallel (unless `NUM_WORKERS=1`).
-3.  It generates a **PDF Report** in `OUTPUT_DIR`.
-4.  It generates **Debug Maps** (PNGs) in `OUTPUT_DIR/debug_maps/<TIMESTAMP>/`.
+| Flag | Description |
+| :--- | :--- |
+| `--data-dir PATH` | Override `DATA_DIR` from config — path to the input NetCDF files |
+| `--output-dir PATH` | Override `OUTPUT_DIR` from config — destination for PDF and debug maps |
+| `--workers N` | Override `NUM_WORKERS` — number of parallel processes |
+
+If a flag is omitted the value from `lib/config.py` is used. Example for a colleague running on a shared server:
+```bash
+python main.py --data-dir /data/viirs/2025 --output-dir /scratch/results --workers 16
+```
+
+1.  The script scans the data directory for valid groups of 4 files (L1B, CMA, Geo, Texture).
+2.  It processes scenes in parallel.
+3.  It generates a **PDF Report** in the output directory.
+4.  It generates **Debug Maps** (PNGs) in `<output-dir>/debug_maps/<TIMESTAMP>/`.
 
 ## 🔬 Class Definitions
 

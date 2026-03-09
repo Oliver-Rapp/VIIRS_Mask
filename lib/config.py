@@ -4,8 +4,8 @@ import numpy as np
 import matplotlib.colors as mcolors
 
 # ================= PATHS =================
-DATA_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/data/20250403_noaa21-viirs-pps'
-OUTPUT_DIR = '/home/oliver/Documents/MET/VIIRS_Mask/output_multi_scene'
+DATA_DIR = './data'
+OUTPUT_DIR = './output_multi_scene'
 
 TIMESTAMP = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -49,7 +49,7 @@ if not os.path.exists(DEBUG_DIR):
 
 # ================= RUN SETTINGS =================
 NUM_WORKERS = None           
-NUM_DEBUG_MAPS = 100        
+NUM_DEBUG_MAPS = 0        
 
 # --- MIZ SUBSET SETTINGS ---
 # Generate a second set of histograms filtered by T11 temperature
@@ -159,7 +159,7 @@ SATZEN_RANGES = [
 SATZEN_DIFF_VARS = ['diff1', 'diff2', 'diff3']
 
 # Plot mode: 'histogram' | 'scatter' | 'both'
-SATZEN_PLOT_MODE = 'both'
+SATZEN_PLOT_MODE = 'histogram'
 
 # One colour per satzen range (must match length of SATZEN_RANGES)
 SATZEN_RANGE_COLORS = ['tab:blue', 'tab:orange', 'tab:green']

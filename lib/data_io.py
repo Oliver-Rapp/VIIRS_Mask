@@ -6,30 +6,34 @@ from . import config
 
 def get_file_groups(directory):
     """
-    Scans directory and groups files by their timestamp.
-    Expects files like: S_NWC_CMA_..._20250415T105803Z_...nc
+    Recursively scans directory (and all subdirectories) and groups NetCDF
+    files by their timestamp. Expects files like:
+        S_NWC_CMA_..._20250415T105803Z_...nc
     """
     groups = {}
     if not os.path.exists(directory):
         print(f"ERROR: Directory not found: {directory}")
         return {}
 
-    files = sorted([f for f in os.listdir(directory) if f.endswith('.nc')])
-    
-    for f in files:
-        match = re.search(r'_(\d{8}T\d{7}Z)_', f) 
-        if not match: continue
-        
-        ts = match.group(1)
-        if ts not in groups: groups[ts] = {}
-        path = os.path.join(directory, f)
-        
-        if 'S_NWC_CMA_' in f: groups[ts]['cma'] = path
-        elif 'physiography' in f: groups[ts]['geo'] = path
-        elif 'viirs' in f: groups[ts]['l1b'] = path
-        elif 'textures' in f: groups[ts]['tex'] = path
-            
-    # Return only complete groups
+    for root, _, filenames in os.walk(directory):
+        for f in sorted(filenames):
+            if not f.endswith('.nc'):
+                continue
+            match = re.search(r'_(\d{8}T\d{7}Z)_', f)
+            if not match:
+                continue
+
+            ts = match.group(1)
+            if ts not in groups:
+                groups[ts] = {}
+            path = os.path.join(root, f)
+
+            if 'S_NWC_CMA_' in f:    groups[ts]['cma'] = path
+            elif 'physiography' in f: groups[ts]['geo'] = path
+            elif 'viirs' in f:        groups[ts]['l1b'] = path
+            elif 'textures' in f:     groups[ts]['tex'] = path
+
+    # Return only complete groups (all 4 file types present)
     valid_groups = {k: v for k, v in groups.items() if len(v) == 4}
     return valid_groups
 

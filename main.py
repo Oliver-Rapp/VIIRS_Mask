@@ -1,3 +1,4 @@
+import argparse
 import datetime
 import numpy as np
 import multiprocessing as mp
@@ -207,9 +208,27 @@ def process_single_scene(args):
     }
 
 def main():
+    parser = argparse.ArgumentParser(description="VIIRS MIZ Edge Analyser")
+    parser.add_argument('--data-dir',   default=None,
+                        help=f"Directory of input NetCDF files (default: DATA_DIR in config.py)")
+    parser.add_argument('--output-dir', default=None,
+                        help=f"Directory for PDF report and debug maps (default: OUTPUT_DIR in config.py)")
+    parser.add_argument('--workers',    default=None, type=int,
+                        help="Number of parallel worker processes (default: all cores)")
+    args = parser.parse_args()
+
+    if args.data_dir:
+        config.DATA_DIR = args.data_dir
+    if args.output_dir:
+        config.OUTPUT_DIR = args.output_dir
+    if args.workers is not None:
+        config.NUM_WORKERS = args.workers
+
     start_time = datetime.datetime.now()
     print("--- VIIRS PROCESSOR START ---")
-    
+    print(f"  Data dir:   {config.DATA_DIR}")
+    print(f"  Output dir: {config.OUTPUT_DIR}")
+
     file_groups = data_io.get_file_groups(config.DATA_DIR)
     all_timestamps = sorted(list(file_groups.keys()))
     
