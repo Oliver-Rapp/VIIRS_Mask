@@ -24,11 +24,15 @@ PREDEFINED_REGIONS = {
     'barents_sea': {
         'lat_min': 70.0, 'lat_max': 78.0,
         'lon_min': 15.0, 'lon_max': 55.0
+    },
+        'Pan-Arctic': {
+        'lat_min': 60.0, 'lat_max': 90.0,
+        'lon_min': -180.0, 'lon_max': 180.0
     }
 }
 
 # --- SELECT YOUR REGION HERE ---
-SELECTED_REGION = 'barents_and_fram' 
+SELECTED_REGION = 'Pan-Arctic' 
 
 # Set the active bounds based on selection
 if SELECTED_REGION not in PREDEFINED_REGIONS:
@@ -159,7 +163,7 @@ SATZEN_RANGES = [
 SATZEN_DIFF_VARS = ['diff1', 'diff2', 'diff3']
 
 # Plot mode: 'histogram' | 'scatter' | 'both'
-SATZEN_PLOT_MODE = 'histogram'
+SATZEN_PLOT_MODE = 'both'
 
 # One colour per satzen range (must match length of SATZEN_RANGES)
 SATZEN_RANGE_COLORS = ['tab:blue', 'tab:orange', 'tab:green']

@@ -333,11 +333,12 @@ def generate_pdf_report(meta, master_counts, master_counts_miz=None,
         masked_grid = np.ma.masked_where(grid_data == 0, grid_data)
         
         mesh = ax.pcolormesh(
-            config.COVERAGE_LON_BINS, 
-            config.COVERAGE_LAT_BINS, 
+            config.COVERAGE_LON_BINS,
+            config.COVERAGE_LAT_BINS,
             masked_grid,
             transform=ccrs.PlateCarree(),
-            cmap='plasma', zorder=2, alpha=0.8
+            cmap='plasma', zorder=2, alpha=0.8,
+            rasterized=True
         )
         
         bounds = config.CROP_BOUNDS
