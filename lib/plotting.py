@@ -1,4 +1,5 @@
 import os
+import datetime
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
@@ -8,6 +9,22 @@ from matplotlib.backends.backend_pdf import PdfPages
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from . import config
+
+def _format_date_range(ts_start, ts_end):
+    """
+    Parses timestamps like '20250415T105803Z' and returns a human-readable
+    date range string, e.g. '2025-04-01 – 2025-04-14'.
+    Falls back gracefully if parsing fails.
+    """
+    def _parse_date(ts):
+        try:
+            return datetime.datetime.strptime(str(ts)[:8], '%Y%m%d').strftime('%Y-%m-%d')
+        except (ValueError, TypeError):
+            return str(ts)
+
+    if ts_start == "N/A" or ts_end == "N/A":
+        return "N/A"
+    return f"{_parse_date(ts_start)} – {_parse_date(ts_end)}"
 
 def generate_debug_suite(classification, neighbors, timestamp, miz_mask=None):
     """
@@ -100,33 +117,33 @@ def _format_count(n):
     else:
         return str(int(n))
 
-def _plot_histogram_pages(pdf, counts_dict, title_prefix=""):
+def _plot_histogram_pages(pdf, counts_dict, title_prefix="", png_dir=None, date_tag=""):
     for var_name, title in config.PLOT_ORDER:
         bins = config.BINS[var_name]
         bin_centers = (bins[:-1] + bins[1:]) / 2
         bin_width = bins[1] - bins[0]
-        
+
         for group_name, keys in config.PLOT_GROUPS.items():
-            plt.figure(figsize=(10, 6))
+            fig = plt.figure(figsize=(10, 6))
             has_data = False
-            
+
             for k in keys:
                 if k not in counts_dict[var_name]: continue
-                
+
                 count_hist = counts_dict[var_name][k]
                 total_count = np.sum(count_hist)
-                
+
                 if total_count > 0:
                     has_data = True
                     # Normalized density
                     density = count_hist / (total_count * bin_width)
-                    
+
                     label_text = config.LABEL_MAP.get(k, k)
                     count_str = _format_count(total_count)
                     full_label = f"{label_text} ({count_str})"
-                    
-                    plt.plot(bin_centers, density, 
-                             label=full_label, 
+
+                    plt.plot(bin_centers, density,
+                             label=full_label,
                              color=config.NEIGHBOR_COLORS.get(k, 'black'),
                              linewidth=2)
 
@@ -134,22 +151,26 @@ def _plot_histogram_pages(pdf, counts_dict, title_prefix=""):
             plt.title(full_title)
             plt.xlabel(title)
             plt.ylabel("Density")
-            
+
             if var_name in config.XLIMS:
                 plt.xlim(config.XLIMS[var_name])
-            
+
             if has_data:
                 # Place legend, now containing N counts
                 plt.legend()
             else:
                 plt.text(0.5, 0.5, "No Data", ha='center', transform=plt.gca().transAxes)
-                
+
             plt.grid(True, linestyle='--', alpha=0.5)
             plt.tight_layout()
             pdf.savefig()
+            if png_dir:
+                slug = group_name.lower().replace(' ', '_')
+                fname = f"{date_tag}_{var_name}_{slug}.png" if date_tag else f"{var_name}_{slug}.png"
+                fig.savefig(os.path.join(png_dir, fname), dpi=300, bbox_inches='tight')
             plt.close()
 
-def _plot_satzen_histogram_pages(pdf, satzen_hist, title_prefix=""):
+def _plot_satzen_histogram_pages(pdf, satzen_hist, title_prefix="", png_dir=None, date_tag=""):
     """
     For each diff variable: one figure with one subplot per class (IN, WN).
     Each subplot shows 3 density lines — one per satzen range.
@@ -195,10 +216,13 @@ def _plot_satzen_histogram_pages(pdf, satzen_hist, title_prefix=""):
         fig.suptitle(f"{title_prefix}Satzen Analysis: {var_titles[dv]}", fontsize=12, fontweight='bold')
         plt.tight_layout()
         pdf.savefig(fig)
+        if png_dir:
+            fname = f"{date_tag}_{dv}.png" if date_tag else f"{dv}.png"
+            fig.savefig(os.path.join(png_dir, fname), dpi=300, bbox_inches='tight')
         plt.close(fig)
 
 
-def _plot_satzen_scatter_pages(pdf, satzen_2d, title_prefix=""):
+def _plot_satzen_scatter_pages(pdf, satzen_2d, title_prefix="", png_dir=None, date_tag=""):
     """
     For each diff variable: one figure with one subplot per class (IN, WN).
     Each subplot is a 2D density heatmap: X=satellite zenith angle, Y=diff.
@@ -253,13 +277,32 @@ def _plot_satzen_scatter_pages(pdf, satzen_2d, title_prefix=""):
         fig.suptitle(f"{title_prefix}Satzen vs {var_titles[dv]}", fontsize=12, fontweight='bold')
         plt.tight_layout()
         pdf.savefig(fig)
+        if png_dir:
+            fname = f"{date_tag}_{dv}.png" if date_tag else f"{dv}.png"
+            fig.savefig(os.path.join(png_dir, fname), dpi=300, bbox_inches='tight')
         plt.close(fig)
 
 
 def generate_pdf_report(meta, master_counts, master_counts_miz=None,
                         satzen_hist=None, satzen_2d=None,
                         satzen_hist_miz=None, satzen_2d_miz=None):
-    pdf_path = os.path.join(config.OUTPUT_DIR, config.PDF_FILENAME)
+    # All output lives inside a folder named after the PDF
+    report_name = os.path.splitext(config.PDF_FILENAME)[0]
+    report_dir  = os.path.join(config.OUTPUT_DIR, report_name)
+
+    dirs = {
+        'metadata':            os.path.join(report_dir, '01_metadata'),
+        'histograms':          os.path.join(report_dir, '02_histograms'),
+        'miz_histograms':      os.path.join(report_dir, '03_miz_histograms'),
+        'satzen_histograms':   os.path.join(report_dir, '04_satzen_histograms'),
+        'satzen_scatter':      os.path.join(report_dir, '05_satzen_scatter'),
+        'miz_satzen_hist':     os.path.join(report_dir, '06_miz_satzen_histograms'),
+        'miz_satzen_scatter':  os.path.join(report_dir, '07_miz_satzen_scatter'),
+    }
+    for d in dirs.values():
+        os.makedirs(d, exist_ok=True)
+
+    pdf_path = os.path.join(report_dir, config.PDF_FILENAME)
     print(f"Generating Report: {pdf_path}")
     
     with PdfPages(pdf_path) as pdf:
@@ -362,23 +405,31 @@ def generate_pdf_report(meta, master_counts, master_counts_miz=None,
         cbar.set_label('Scene Overlap Count')
         ax.set_title("Geographic Coverage Density")
         
+        date_range_str = _format_date_range(meta['time_start'], meta['time_end'])
+        date_pfx = f"{date_range_str}\n"
+        date_tag = date_range_str.replace(' – ', '_to_')  # e.g. 2025-08-01_to_2025-08-14
+
         pdf.savefig()
+        fig.savefig(os.path.join(dirs['metadata'], f"{date_tag}_metadata.png"),
+                    dpi=300, bbox_inches='tight')
         plt.close()
 
         # PART 1: Standard Plots
-        _plot_histogram_pages(pdf, master_counts, title_prefix="")
+        _plot_histogram_pages(pdf, master_counts, title_prefix=date_pfx,
+                              png_dir=dirs['histograms'], date_tag=date_tag)
 
         # PART 2: MIZ Subset Plots
         if config.ENABLE_MIZ_HISTOGRAMS and master_counts_miz:
             plt.figure(figsize=(11, 8.5))
-            plt.text(0.5, 0.5, 
-                     f"MIZ SUBSET ANALYSIS\n\nTemperature Filter: {config.MIZ_T11_RANGE[0]}K < T11 < {config.MIZ_T11_RANGE[1]}K", 
+            plt.text(0.5, 0.5,
+                     f"MIZ SUBSET ANALYSIS\n\nTemperature Filter: {config.MIZ_T11_RANGE[0]}K < T11 < {config.MIZ_T11_RANGE[1]}K",
                      ha='center', va='center', fontsize=20)
             plt.axis('off')
             pdf.savefig()
             plt.close()
-            
-            _plot_histogram_pages(pdf, master_counts_miz, title_prefix="[MIZ Subset] ")
+
+            _plot_histogram_pages(pdf, master_counts_miz, title_prefix=f"[MIZ Subset] {date_pfx}",
+                                  png_dir=dirs['miz_histograms'], date_tag=date_tag)
 
         # PART 3: Satzen Analysis
         if config.ENABLE_SATZEN_ANALYSIS and (satzen_hist is not None or satzen_2d is not None):
@@ -394,9 +445,11 @@ def generate_pdf_report(meta, master_counts, master_counts_miz=None,
 
             mode = config.SATZEN_PLOT_MODE
             if mode in ('histogram', 'both') and satzen_hist is not None:
-                _plot_satzen_histogram_pages(pdf, satzen_hist)
+                _plot_satzen_histogram_pages(pdf, satzen_hist, title_prefix=date_pfx,
+                                             png_dir=dirs['satzen_histograms'], date_tag=date_tag)
             if mode in ('scatter', 'both') and satzen_2d is not None:
-                _plot_satzen_scatter_pages(pdf, satzen_2d)
+                _plot_satzen_scatter_pages(pdf, satzen_2d, title_prefix=date_pfx,
+                                           png_dir=dirs['satzen_scatter'], date_tag=date_tag)
 
             # MIZ subset
             if (config.ENABLE_MIZ_HISTOGRAMS
@@ -412,6 +465,8 @@ def generate_pdf_report(meta, master_counts, master_counts_miz=None,
                 plt.close()
 
                 if mode in ('histogram', 'both') and satzen_hist_miz is not None:
-                    _plot_satzen_histogram_pages(pdf, satzen_hist_miz, title_prefix="[MIZ] ")
+                    _plot_satzen_histogram_pages(pdf, satzen_hist_miz, title_prefix=f"[MIZ] {date_pfx}",
+                                                 png_dir=dirs['miz_satzen_hist'], date_tag=date_tag)
                 if mode in ('scatter', 'both') and satzen_2d_miz is not None:
-                    _plot_satzen_scatter_pages(pdf, satzen_2d_miz, title_prefix="[MIZ] ")
+                    _plot_satzen_scatter_pages(pdf, satzen_2d_miz, title_prefix=f"[MIZ] {date_pfx}",
+                                               png_dir=dirs['miz_satzen_scatter'], date_tag=date_tag)

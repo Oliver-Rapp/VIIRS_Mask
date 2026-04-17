@@ -28,11 +28,15 @@ PREDEFINED_REGIONS = {
         'Pan-Arctic': {
         'lat_min': 60.0, 'lat_max': 90.0,
         'lon_min': -180.0, 'lon_max': 180.0
+    },
+        'Pan-Arctic_Big': {
+        'lat_min': 50.0, 'lat_max': 90.0,
+        'lon_min': -180.0, 'lon_max': 180.0
     }
 }
 
 # --- SELECT YOUR REGION HERE ---
-SELECTED_REGION = 'Pan-Arctic' 
+SELECTED_REGION = 'Pan-Arctic_Big' 
 
 # Set the active bounds based on selection
 if SELECTED_REGION not in PREDEFINED_REGIONS:
@@ -96,7 +100,7 @@ XLIMS = {
     't11': (255, 275),
     'diff1': (0, 2),
     'diff2': (0, 11),
-    'diff3': (-2.5, 1),
+    'diff3': (-3.5, 1),
     't11t12_tex': (0, 0.3),
     't37t12_tex': (0, 4)
 }
@@ -139,11 +143,12 @@ PLOT_ORDER = [
     ('diff2', 'T37 - T12 (K)'),
     ('diff3', 'T8.7 - T12 (K)'),
     ('sunz', 'Sun Zenith'),
-    ('satz', 'Sat Zenith'),
-    ('r06_tex', 'r06-texture'),
-    ('t11_tex', 't11-texture'),
-    ('t11t12_tex', 't11t12-texture'),
-    ('t37t12_tex', 't37t12-texture')
+    ('satz', 'Sat Zenith')
+    # ,
+    # ('r06_tex', 'r06-texture'),
+    # ('t11_tex', 't11-texture'),
+    # ('t11t12_tex', 't11t12-texture'),
+    # ('t37t12_tex', 't37t12-texture')
 ]
 
 # ================= SATZEN ANALYSIS SETTINGS =================
